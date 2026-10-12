@@ -1,0 +1,415 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum StaffRole {
+  owner
+  manager
+  staff
+}
+
+enum TableStatus {
+  active
+  inactive
+}
+
+enum ReservationStatus {
+  pending
+  confirmed
+  rejected
+  expired
+  cancelled
+  completed
+  no_show
+}
+
+enum ReservationSource {
+  web
+  ai
+  admin
+}
+
+enum ChatRole {
+  user
+  assistant
+  tool
+}
+
+enum ToolCallStatus {
+  ok
+  error
+}
+
+enum ActorType {
+  customer
+  ai
+  staff
+  system
+}
+
+model Tenant {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  status      String   @default("active")
+  tagline     String?
+  aboutText   String?  @map("about_text")
+  logoUrl     String?  @map("logo_url")
+  policyText  String?  @map("policy_text")
+  aiPersona   String?  @map("ai_persona")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  outlets                  Outlet[]
+  staffUsers               StaffUser[]
+  diningAreas              DiningArea[]
+  restaurantTables         RestaurantTable[]
+  menuCategories           MenuCategory[]
+  menuItems                MenuItem[]
+  outletMenuItems          OutletMenuItem[]
+  customers                Customer[]
+  reservations             Reservation[]
+  reservationStatusHistory ReservationStatusHistory[]
+  auditEvents              AuditEvent[]
+  chatSessions             ChatSession[]
+  chatMessages             ChatMessage[]
+  aiToolCalls              AiToolCall[]
+  openingHours             OpeningHour[]
+  specialDays              SpecialDay[]
+
+  @@map("tenants")
+}
+
+model Outlet {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  name                  String
+  slug                  String
+  address               String?
+  city                  String?
+  phone                 String?
+  whatsapp              String?
+  email                 String?
+  latitude              Decimal? @db.Decimal(10, 8)
+  longitude             Decimal? @db.Decimal(11, 8)
+  timezone              String   @default("Asia/Jakarta")
+  defaultDurationMinutes Int     @default(90) @map("default_duration_minutes")
+  minNoticeMinutes      Int      @default(60) @map("min_notice_minutes")
+  maxAdvanceDays        Int      @default(30) @map("max_advance_days")
+  changeCutoffMinutes   Int      @default(120) @map("change_cutoff_minutes")
+  maxPartySize          Int      @default(12) @map("max_party_size")
+  autoConfirm           Boolean  @default(false) @map("auto_confirm")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  diningAreas      DiningArea[]
+  restaurantTables RestaurantTable[]
+  openingHours     OpeningHour[]
+  specialDays      SpecialDay[]
+  staffOutlets     StaffOutlet[]
+  outletMenuItems  OutletMenuItem[]
+  reservations     Reservation[]
+  chatSessions     ChatSession[]
+
+  @@unique([tenantId, slug])
+  @@map("outlets")
+}
+
+model OpeningHour {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  outletId  String   @map("outlet_id") @db.Uuid
+  weekday   Int      // 0 = Sunday, 6 = Saturday
+  openTime  String   @map("open_time") // HH:mm
+  closeTime String   @map("close_time") // HH:mm
+  isClosed  Boolean  @default(false) @map("is_closed")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet Outlet @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, weekday])
+  @@map("opening_hours")
+}
+
+model SpecialDay {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  outletId  String   @map("outlet_id") @db.Uuid
+  date      DateTime @db.Date
+  isClosed  Boolean  @default(true) @map("is_closed")
+  openTime  String?  @map("open_time")
+  closeTime String?  @map("close_time")
+  note      String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet Outlet @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, date])
+  @@map("special_days")
+}
+
+model StaffUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  name         String
+  email        String
+  passwordHash String    @map("password_hash")
+  role         StaffRole @default(staff)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffOutlets StaffOutlet[]
+
+  @@unique([tenantId, email])
+  @@map("staff_users")
+}
+
+model StaffOutlet {
+  staffId  String @map("staff_id") @db.Uuid
+  outletId String @map("outlet_id") @db.Uuid
+
+  staff  StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  outlet Outlet    @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, outletId])
+  @@map("staff_outlets")
+}
+
+model DiningArea {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  outletId  String   @map("outlet_id") @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet           Outlet            @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  restaurantTables RestaurantTable[]
+
+  @@unique([outletId, name])
+  @@map("dining_areas")
+}
+
+model RestaurantTable {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  outletId    String      @map("outlet_id") @db.Uuid
+  areaId      String?     @map("area_id") @db.Uuid
+  tableNumber String      @map("table_number")
+  capacity    Int
+  status      TableStatus @default(active)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet       Outlet        @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  area         DiningArea?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  reservations Reservation[]
+
+  @@unique([outletId, tableNumber])
+  @@map("restaurant_tables")
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[]
+
+  @@unique([tenantId, name])
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  categoryId  String?  @map("category_id") @db.Uuid
+  name        String
+  description String?
+  priceIdr    Int      @map("price_idr")
+  isAvailable Boolean  @default(true) @map("is_available")
+  isActive    Boolean  @default(true) @map("is_active")
+  imageUrl    String?  @map("image_url")
+  tags        String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category        MenuCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  outletMenuItems OutletMenuItem[]
+
+  @@map("menu_items")
+}
+
+model OutletMenuItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  outletId         String   @map("outlet_id") @db.Uuid
+  menuItemId       String   @map("menu_item_id") @db.Uuid
+  isAvailable      Boolean  @default(true) @map("is_available")
+  priceOverrideIdr Int?     @map("price_override_idr")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet   Outlet   @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, menuItemId])
+  @@map("outlet_menu_items")
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  phone     String
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+
+  @@unique([tenantId, phone])
+  @@map("customers")
+}
+
+model Reservation {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  outletId        String            @map("outlet_id") @db.Uuid
+  code            String
+  customerId      String            @map("customer_id") @db.Uuid
+  tableId         String            @map("table_id") @db.Uuid
+  startAt         DateTime          @map("start_at") @db.Timestamptz
+  endAt           DateTime          @map("end_at") @db.Timestamptz
+  partySize       Int               @map("party_size")
+  status          ReservationStatus @default(pending)
+  source          ReservationSource @default(web)
+  notes           String?
+  rejectionReason String?           @map("rejection_reason")
+  expiresAt       DateTime?         @map("expires_at") @db.Timestamptz
+  idempotencyKey  String?           @unique @map("idempotency_key")
+  version         Int               @default(1)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet   Outlet          @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  table    RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  statusHistory ReservationStatusHistory[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, startAt])
+  @@index([tenantId, tableId, startAt])
+  @@map("reservations")
+}
+
+model ReservationStatusHistory {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  reservationId String            @map("reservation_id") @db.Uuid
+  fromStatus    ReservationStatus @map("from_status")
+  toStatus      ReservationStatus @map("to_status")
+  actorType     ActorType         @map("actor_type")
+  actorId       String?           @map("actor_id")
+  reason        String?
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("reservation_status_history")
+}
+
+model AuditEvent {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  actorType  ActorType @map("actor_type")
+  actorId    String?   @map("actor_id")
+  action     String
+  entityType String    @map("entity_type")
+  entityId   String?   @map("entity_id")
+  before     Json?
+  after      Json?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_events")
+}
+
+model ChatSession {
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  outletId              String?   @map("outlet_id") @db.Uuid
+  customerId            String?   @map("customer_id") @db.Uuid
+  verifiedReservationId String?   @map("verified_reservation_id") @db.Uuid
+  startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  lastActiveAt          DateTime  @default(now()) @map("last_active_at") @db.Timestamptz
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  outlet   Outlet?       @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+  toolCalls AiToolCall[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session   ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  toolCalls AiToolCall[]
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+model AiToolCall {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  sessionId String         @map("session_id") @db.Uuid
+  messageId String?        @map("message_id") @db.Uuid
+  toolName  String         @map("tool_name")
+  input     Json
+  output    Json
+  status    ToolCallStatus @default(ok)
+  latencyMs Int            @default(0) @map("latency_ms")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@map("ai_tool_calls")
+}
