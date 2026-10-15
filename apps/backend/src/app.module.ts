@@ -5,6 +5,11 @@ import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ReservationsModule } from './reservations/reservations.module';
+import { AuditModule } from './audit/audit.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { RestaurantModule } from './restaurant/restaurant.module';
+import { MenuModule } from './menu/menu.module';
 
 @Module({
   imports: [
@@ -12,6 +17,11 @@ import { AppService } from './app.service';
     PrismaModule,
     AuthModule,
     AiModule,
+    ReservationsModule,
+    AuditModule,
+    AvailabilityModule,
+    RestaurantModule,
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [AppService],
