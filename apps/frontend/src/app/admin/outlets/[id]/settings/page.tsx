@@ -1,16 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { ConfirmationModal } from '../../../components/confirmation-modal';
+import { useParams } from 'next/navigation';
 
 interface Outlet {
   id: string;
   name: string;
   slug: string;
+  address?: string;
 }
 
 interface OpeningHour {
-  id: string;
+  id?: string;
   outletId: string;
   weekday: number; // 0 = Sunday, 6 = Saturday
   openTime: string;
@@ -22,7 +25,6 @@ interface DiningArea {
   id: string;
   name: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 interface RestaurantTable {
@@ -30,609 +32,815 @@ interface RestaurantTable {
   tableNumber: string;
   capacity: number;
   status: 'active' | 'inactive';
-  area?: DiningArea;
+  area?: DiningArea | null;
 }
 
+const WEEKDAYS_ID = [
+  'Minggu',
+  'Senin',
+  'Selasa',
+  'Rabu',
+  'Kamis',
+  'Jumat',
+  'Sabtu',
+];
+
 export default function OutletSettingsPage() {
-  const [outletId, setOutletId] = useState('');
-  
+  const params = useParams();
+  const outletId = (params?.id as string) || '';
+
   const [loading, setLoading] = useState(true);
   const [outlet, setOutlet] = useState<Outlet | null>(null);
   const [openingHours, setOpeningHours] = useState<OpeningHour[]>([]);
   const [areas, setAreas] = useState<DiningArea[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [activeTab, setActiveTab] = useState<'hours' | 'areas' | 'tables'>('hours');
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setOutletId(window.location.pathname.split('/')[3] ?? '');
-  }, []);
-
-  useEffect(() => {
-    if (outletId) {
-      fetchOutletData();
-    }
-  }, [outletId]);
-
-  const fetchOutletData = async () => {
+  const fetchOutletData = useCallback(async () => {
+    if (!outletId) return;
+    setLoading(true);
+    setError(null);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      // Fetch outlet details
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
+      const token = localStorage.getItem('accessToken');
+      const headers = { Authorization: `Bearer ${token}` };
 
-      if (response.ok) {
-        const data = await response.json();
-        setOutlet(data.data);
-        
-        // Also fetch related data
-        fetchOpeningHours(data.data.id);
-        fetchAreas(data.data.id);
-        fetchTables(data.data.id);
+      const [outletRes, hoursRes, areasRes, tablesRes] = await Promise.all([
+        fetch(`${API_URL}/admin/outlets/${outletId}`, { headers }),
+        fetch(`${API_URL}/admin/outlets/${outletId}/opening-hours`, { headers }),
+        fetch(`${API_URL}/admin/outlets/${outletId}/areas`, { headers }),
+        fetch(`${API_URL}/admin/outlets/${outletId}/tables`, { headers }),
+      ]);
+
+      if (!outletRes.ok) throw new Error('Cabang outlet tidak ditemukan.');
+
+      const outletJson = await outletRes.json();
+      setOutlet(outletJson.data || outletJson);
+
+      if (hoursRes.ok) {
+        const hJson = await hoursRes.json();
+        setOpeningHours(Array.isArray(hJson) ? hJson : (Array.isArray(hJson?.data) ? hJson.data : []));
       }
-    } catch (error) {
-      console.error('Failed to fetch outlet data:', error);
+      if (areasRes.ok) {
+        const aJson = await areasRes.json();
+        setAreas(Array.isArray(aJson) ? aJson : (Array.isArray(aJson?.data) ? aJson.data : []));
+      }
+      if (tablesRes.ok) {
+        const tJson = await tablesRes.json();
+        setTables(Array.isArray(tJson) ? tJson : (Array.isArray(tJson?.data) ? tJson.data : []));
+      }
+    } catch (err: unknown) {
+      console.error('Failed to fetch outlet details:', err);
+      setError(err instanceof Error ? err.message : 'Gagal memuat pengaturan cabang.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [outletId]);
 
-  const fetchOpeningHours = async (outletId: string) => {
-    try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/opening-hours`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setOpeningHours(data.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch opening hours:', error);
-    }
-  };
-
-  const fetchAreas = async (outletId: string) => {
-    try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/areas`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAreas(data.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch areas:', error);
-    }
-  };
-
-  const fetchTables = async (outletId: string) => {
-    try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/tables`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTables(data.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch tables:', error);
-    }
-  };
+  useEffect(() => {
+    void fetchOutletData();
+  }, [fetchOutletData]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex flex-col items-center justify-center py-24 space-y-3">
+        <div className="w-8 h-8 border-2 border-[var(--brass)] border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-mono text-[var(--muted)]">Memuat konfigurasi outlet...</p>
       </div>
     );
   }
 
   if (!outlet) {
     return (
-      <div className="bg-slate-800/50 backdrop-blur rounded-xl p-8 border border-slate-700">
-        <p className="text-gray-400">Outlet not found</p>
-        <Link href="/admin/outlets" className="text-blue-400 hover:text-blue-300 mt-4 inline-block">
-          ← Back to Outlets
+      <div className="bg-[var(--panel)] border border-[var(--line)] rounded-lg p-8 text-center space-y-3">
+        <p className="text-sm text-[var(--sand)]">Outlet tidak ditemukan atau akses tidak sah.</p>
+        <Link href="/admin/outlets" className="btn-outline text-xs inline-flex">
+          ← Kembali ke Daftar Cabang
         </Link>
       </div>
     );
   }
 
-  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 antialiased">
       {/* Header */}
       <div>
-        <div className="mb-4">
-          <Link 
-            href="/admin/outlets" 
-            className="text-sm text-gray-400 hover:text-gray-300 flex items-center space-x-1"
-          >
-            <span>←</span>
-            <span>Back to Outlets</span>
-          </Link>
+        <Link 
+          href="/admin/outlets" 
+          className="text-xs font-mono text-[var(--muted)] hover:text-[var(--sand)] inline-flex items-center gap-1.5 mb-3"
+        >
+          <span>←</span>
+          <span>Kembali ke Daftar Cabang</span>
+        </Link>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-[var(--sand)]">
+              {outlet.name} — Pengaturan Operasional
+            </h1>
+            <p className="text-xs text-[var(--sand-muted)] mt-1 font-mono">
+              slug: @{outlet.slug} · ID: {outlet.id}
+            </p>
+          </div>
+          <span className="badge-status active">
+            Cabang Terhubung
+          </span>
         </div>
-        <h1 className="text-2xl font-bold mb-1">{outlet.name} - Settings</h1>
-        <p className="text-gray-400 text-sm">Manage operating hours, dining areas, and table configuration</p>
       </div>
 
+      {error && (
+        <div className="bg-[var(--chili-bg)] border border-[var(--chili-border)] text-[var(--chili-light)] px-4 py-3 rounded text-xs">
+          {error}
+        </div>
+      )}
+
       {/* Tabs */}
-      <div className="border-b border-slate-700">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'hours' as const, label: 'Opening Hours', icon: '🕐' },
-            { id: 'areas' as const, label: 'Dining Areas', icon: '📍' },
-            { id: 'tables' as const, label: 'Tables', icon: '🪑' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
-              }`}
-            >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+      <div className="border-b border-[var(--line)]">
+        <nav className="flex space-x-6 text-xs">
+          <button
+            onClick={() => setActiveTab('hours')}
+            className={`pb-3 font-medium transition-colors flex items-center gap-2 border-b-2 ${
+              activeTab === 'hours'
+                ? 'border-[var(--brass)] text-[var(--brass)] font-semibold'
+                : 'border-transparent text-[var(--sand-muted)] hover:text-[var(--sand)]'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Jam Buka & Operasional</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('areas')}
+            className={`pb-3 font-medium transition-colors flex items-center gap-2 border-b-2 ${
+              activeTab === 'areas'
+                ? 'border-[var(--brass)] text-[var(--brass)] font-semibold'
+                : 'border-transparent text-[var(--sand-muted)] hover:text-[var(--sand)]'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span>Area Makan ({areas.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tables')}
+            className={`pb-3 font-medium transition-colors flex items-center gap-2 border-b-2 ${
+              activeTab === 'tables'
+                ? 'border-[var(--brass)] text-[var(--brass)] font-semibold'
+                : 'border-transparent text-[var(--sand-muted)] hover:text-[var(--sand)]'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            <span>Tata Letak Meja ({tables.length})</span>
+          </button>
         </nav>
       </div>
 
-      {/* Tab Content */}
+      {/* Tab 1: Hours */}
       {activeTab === 'hours' && (
-        <OpeningHoursSection 
+        <OpeningHoursSection
           outletId={outletId}
-          openingHours={openingHours}
-          weekdays={weekdays}
-          onSave={() => fetchOpeningHours(outletId)}
-          onChange={setOpeningHours}
+          initialHours={openingHours}
+          onSaved={() => void fetchOutletData()}
         />
       )}
 
+      {/* Tab 2: Areas */}
       {activeTab === 'areas' && (
-        <AreasSection 
+        <AreasSection
           outletId={outletId}
           areas={areas}
-          onRefresh={() => fetchAreas(outletId)}
+          onRefresh={() => void fetchOutletData()}
         />
       )}
 
+      {/* Tab 3: Tables */}
       {activeTab === 'tables' && (
-        <TablesSection 
+        <TablesSection
           outletId={outletId}
           areas={areas}
           tables={tables}
-          onRefresh={() => fetchTables(outletId)}
+          onRefresh={() => void fetchOutletData()}
         />
       )}
     </div>
   );
 }
 
-// Opening Hours Tab Component
-function OpeningHoursSection({ 
-  outletId, 
-  openingHours, 
-  weekdays,
-  onSave,
-  onChange,
-}: { 
+// Sub-component 1: Opening Hours
+function OpeningHoursSection({
+  outletId,
+  initialHours,
+  onSaved,
+}: {
   outletId: string;
-  openingHours: OpeningHour[];
-  weekdays: string[];
-  onSave: () => void;
-  onChange: (hours: OpeningHour[]) => void;
+  initialHours: OpeningHour[];
+  onSaved: () => void;
 }) {
+  const [hours, setHours] = useState<OpeningHour[]>([]);
   const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fill all 7 weekdays
+    const completeHours: OpeningHour[] = [];
+    for (let i = 0; i < 7; i++) {
+      const found = initialHours.find((h) => h.weekday === i);
+      completeHours.push(
+        found || {
+          outletId,
+          weekday: i,
+          openTime: '10:00',
+          closeTime: '22:00',
+          isClosed: false,
+        },
+      );
+    }
+    setHours(completeHours);
+  }, [initialHours, outletId]);
+
+  const handleToggleClosed = (weekday: number, isClosed: boolean) => {
+    setHours((prev) =>
+      prev.map((h) => (h.weekday === weekday ? { ...h, isClosed } : h)),
+    );
+  };
+
+  const handleTimeChange = (
+    weekday: number,
+    field: 'openTime' | 'closeTime',
+    val: string,
+  ) => {
+    setHours((prev) =>
+      prev.map((h) => (h.weekday === weekday ? { ...h, [field]: val } : h)),
+    );
+  };
 
   const handleSave = async () => {
     setSaving(true);
-    
+    setMsg(null);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      const formattedHours = openingHours.map(hour => ({
-        outletId: hour.outletId,
-        weekday: hour.weekday,
-        openTime: hour.openTime,
-        closeTime: hour.closeTime,
-        isClosed: hour.isClosed,
+      const token = localStorage.getItem('accessToken');
+
+      const payload = hours.map((h) => ({
+        weekday: h.weekday,
+        openTime: h.openTime,
+        closeTime: h.closeTime,
+        isClosed: h.isClosed,
       }));
 
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/opening-hours`, {
+      const res = await fetch(`${API_URL}/admin/outlets/${outletId}/opening-hours`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formattedHours),
+        body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-        onSave();
-        alert('Opening hours saved successfully');
+      if (res.ok) {
+        setMsg('Jadwal operasional berhasil disimpan.');
+        onSaved();
+      } else {
+        alert('Gagal menyimpan jam operasional.');
       }
-    } catch (error) {
-      console.error('Save error:', error);
-      alert('Failed to save opening hours');
+    } catch (err) {
+      console.error('Save hours error:', err);
+      alert('Terjadi kesalahan jaringan.');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700 overflow-hidden">
-      <div className="p-6 border-b border-slate-700">
-        <h2 className="text-lg font-semibold mb-1">Operating Schedule</h2>
-        <p className="text-gray-400 text-sm">Set your restaurant's weekly operating hours</p>
+    <div className="bg-[var(--panel)] border border-[var(--line)] rounded-lg overflow-hidden space-y-4">
+      <div className="p-4 border-b border-[var(--line)] flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--sand)]">Jadwal Mingguan Cabang</h2>
+          <p className="text-xs text-[var(--muted)]">Atur rentang jam layanan buka dan hari libur</p>
+        </div>
+        {msg && <span className="text-xs font-mono text-[var(--pandan-light)]">{msg}</span>}
       </div>
 
-      <table className="w-full">
-        <thead className="bg-slate-900/50">
-          <tr>
-            <th className="text-left py-3 px-6 text-sm font-medium text-gray-300">Day</th>
-            <th className="text-left py-3 px-6 text-sm font-medium text-gray-300">Status</th>
-            <th className="text-left py-3 px-6 text-sm font-medium text-gray-300">Open Time</th>
-            <th className="text-left py-3 px-6 text-sm font-medium text-gray-300">Close Time</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-700">
-          {weekdays.map((day, index) => {
-            const hour = openingHours.find(h => h.weekday === index) || {
-              openTime: '09:00',
-              closeTime: '21:00',
-              isClosed: false,
-            };
-
-            return (
-              <tr key={index} className="hover:bg-slate-700/30">
-                <td className="py-3 px-6 text-sm">
-                  <strong>{day}</strong>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="border-b border-[var(--line)] bg-[var(--panel-elevated)] text-[var(--sand-muted)] uppercase font-mono text-[11px]">
+            <tr>
+              <th className="py-2.5 px-4">Hari</th>
+              <th className="py-2.5 px-4">Status Buka</th>
+              <th className="py-2.5 px-4">Jam Buka</th>
+              <th className="py-2.5 px-4">Jam Tutup</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--line)]">
+            {hours.map((h) => (
+              <tr key={h.weekday} className="hover:bg-[var(--panel-elevated)] transition-colors">
+                <td className="py-3 px-4 font-semibold text-[var(--sand)]">
+                  {WEEKDAYS_ID[h.weekday]}
                 </td>
-                <td className="py-3 px-6 text-sm">
-                  <label className="inline-flex items-center cursor-pointer">
+                <td className="py-3 px-4">
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={hour.isClosed}
-                      onChange={(e) => {
-                        const updated = openingHours.find(h => h.weekday === index);
-                        if (updated) {
-                          onChange(openingHours.map((item) => item.weekday === index ? { ...item, isClosed: e.target.checked } : item));
-                        }
-                      }}
-                      className="sr-only peer"
+                      checked={!h.isClosed}
+                      onChange={(e) => handleToggleClosed(h.weekday, !e.target.checked)}
+                      className="accent-[var(--brass)]"
                     />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    <span className="ml-3 text-sm text-gray-300">
-                      {hour.isClosed ? 'Closed' : 'Open'}
+                    <span className={`badge-status ${!h.isClosed ? 'active' : 'inactive'}`}>
+                      {!h.isClosed ? 'Buka' : 'Tutup'}
                     </span>
                   </label>
                 </td>
-                <td className="py-3 px-6 text-sm">
-                  {hour.isClosed ? (
-                    <span className="text-gray-500 italic">-</span>
-                  ) : (
+                <td className="py-3 px-4">
+                  {!h.isClosed ? (
                     <input
                       type="time"
-                      value={hour.openTime}
-                      onChange={(e) => {
-                        const updated = openingHours.find(h => h.weekday === index);
-                        if (updated) {
-                          onChange(openingHours.map((item) => item.weekday === index ? { ...item, openTime: e.target.value } : item));
-                        }
-                      }}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={h.openTime}
+                      onChange={(e) => handleTimeChange(h.weekday, 'openTime', e.target.value)}
+                      className="field-input font-mono text-xs py-1"
                     />
+                  ) : (
+                    <span className="text-[var(--muted)] font-mono">-</span>
                   )}
                 </td>
-                <td className="py-3 px-6 text-sm">
-                  {!hour.isClosed && (
+                <td className="py-3 px-4">
+                  {!h.isClosed ? (
                     <input
                       type="time"
-                      value={hour.closeTime}
-                      onChange={(e) => {
-                        const updated = openingHours.find(h => h.weekday === index);
-                        if (updated) {
-                          onChange(openingHours.map((item) => item.weekday === index ? { ...item, closeTime: e.target.value } : item));
-                        }
-                      }}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={h.closeTime}
+                      onChange={(e) => handleTimeChange(h.weekday, 'closeTime', e.target.value)}
+                      className="field-input font-mono text-xs py-1"
                     />
+                  ) : (
+                    <span className="text-[var(--muted)] font-mono">-</span>
                   )}
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <div className="p-6 bg-slate-900/50 border-t border-slate-700 flex justify-end">
+      <div className="p-4 bg-[var(--panel-elevated)] border-t border-[var(--line)] flex justify-end">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-brass text-xs"
         >
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving ? 'Menyimpan Jadwal...' : 'Simpan Jadwal Operasional'}
         </button>
       </div>
     </div>
   );
 }
 
-// Dining Areas Section
-function AreasSection({ 
-  outletId, 
+// Sub-component 2: Dining Areas
+function AreasSection({
+  outletId,
   areas,
-  onRefresh 
-}: { 
+  onRefresh,
+}: {
   outletId: string;
   areas: DiningArea[];
   onRefresh: () => void;
 }) {
   const [newAreaName, setNewAreaName] = useState('');
+  const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
+  const [editingAreaName, setEditingAreaName] = useState('');
+  const [areaToDelete, setAreaToDelete] = useState<DiningArea | null>(null);
   const [creating, setCreating] = useState(false);
+  const [savingArea, setSavingArea] = useState(false);
+  const [deletingArea, setDeletingArea] = useState(false);
 
   const handleAddArea = async () => {
     if (!newAreaName.trim()) return;
-
     setCreating(true);
-    
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/areas`, {
+      const token = localStorage.getItem('accessToken');
+
+      const res = await fetch(`${API_URL}/admin/outlets/${outletId}/areas`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: newAreaName }),
+        body: JSON.stringify({ name: newAreaName.trim() }),
       });
 
-      if (response.ok) {
+      if (res.ok) {
         setNewAreaName('');
         onRefresh();
+      } else {
+        alert('Gagal membuat area makan baru.');
       }
-    } catch (error) {
-      console.error('Add area error:', error);
+    } catch (err) {
+      console.error('Create area error:', err);
     } finally {
       setCreating(false);
     }
   };
 
+  const handleUpdateArea = async () => {
+    if (!editingAreaId || !editingAreaName.trim()) return;
+    setSavingArea(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/admin/areas/${editingAreaId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: editingAreaName.trim() }),
+      });
+      if (res.ok) {
+        setEditingAreaId(null);
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Update area error:', err);
+    } finally {
+      setSavingArea(false);
+    }
+  };
+
+  const handleDeleteArea = async () => {
+    if (!areaToDelete) return;
+    setDeletingArea(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/admin/areas/${areaToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setAreaToDelete(null);
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Delete area error:', err);
+    } finally {
+      setDeletingArea(false);
+    }
+  };
+
   return (
-    <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700">
-      <div className="p-6 border-b border-slate-700">
-        <h2 className="text-lg font-semibold mb-1">Dining Areas</h2>
-        <p className="text-gray-400 text-sm">Create and manage seating areas within this outlet</p>
+    <div className="bg-[var(--panel)] border border-[var(--line)] rounded-lg p-5 space-y-5">
+      <div className="border-b border-[var(--line)] pb-3">
+        <h2 className="text-sm font-semibold text-[var(--sand)]">Area Makan Restoran</h2>
+        <p className="text-xs text-[var(--muted)]">Zonasi penempatan meja (Indoor AC, Lesehan VIP, Outdoor Teras)</p>
       </div>
 
-      <div className="p-6 border-b border-slate-700">
-        <div className="flex gap-4">
-          <input
-            type="text"
-            value={newAreaName}
-            onChange={(e) => setNewAreaName(e.target.value)}
-            placeholder="Enter area name (e.g., Main Hall, VIP Room)"
-            className="flex-1 px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onKeyDown={(e) => e.key === 'Enter' && handleAddArea()}
-          />
-          <button
-            onClick={handleAddArea}
-            disabled={creating || !newAreaName.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            {creating ? 'Adding...' : '+ Add Area'}
-          </button>
-        </div>
+      <div className="flex gap-2 max-w-md">
+        <input
+          type="text"
+          value={newAreaName}
+          onChange={(e) => setNewAreaName(e.target.value)}
+          placeholder="Nama area baru (mis. Ruang VIP Gadang)..."
+          className="flex-1 field-input text-xs"
+          onKeyDown={(e) => e.key === 'Enter' && void handleAddArea()}
+        />
+        <button
+          onClick={handleAddArea}
+          disabled={creating || !newAreaName.trim()}
+          className="btn-brass text-xs shrink-0"
+        >
+          {creating ? 'Menambah...' : '+ Tambah Area'}
+        </button>
       </div>
 
-      {areas.length === 0 ? (
-        <div className="p-12 text-center text-gray-400">
-          No dining areas yet. Create one to start organizing your seating layout.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-          {areas.map((area) => (
-            <div key={area.id} className="bg-slate-700/50 border border-slate-600 rounded-lg p-4 hover:border-blue-500 transition-colors">
-              <h3 className="font-semibold text-lg mb-1">{area.name}</h3>
-              <p className="text-sm text-gray-400">Created {new Date(area.createdAt).toLocaleDateString()}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        {areas.length === 0 ? (
+          <p className="text-xs text-[var(--muted)] col-span-3 py-6 text-center">
+            Belum ada area makan yang dibuat untuk cabang ini.
+          </p>
+        ) : (
+          areas.map((area) => (
+            <div
+              key={area.id}
+              className="p-3 rounded border border-[var(--line)] bg-[var(--panel-input)] flex items-center justify-between"
+            >
+              <div className="min-w-0 flex-1 mr-2">
+                {editingAreaId === area.id ? (
+                  <div className="flex gap-1.5">
+                    <input
+                      value={editingAreaName}
+                      onChange={(e) => setEditingAreaName(e.target.value)}
+                      className="field-input text-xs py-1 min-w-0"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleUpdateArea();
+                        if (e.key === 'Escape') setEditingAreaId(null);
+                      }}
+                    />
+                    <button type="button" onClick={() => void handleUpdateArea()} disabled={savingArea} className="text-[var(--pandan-light)] text-xs">Simpan</button>
+                    <button type="button" onClick={() => setEditingAreaId(null)} className="text-[var(--muted)] text-xs">Batal</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="font-semibold text-xs text-[var(--sand)] block">{area.name}</span>
+                    <span className="text-[10px] font-mono text-[var(--muted)]">
+                      Dibuat {new Date(area.createdAt).toLocaleDateString('id-ID')}
+                    </span>
+                  </>
+                )}
+              </div>
+              {editingAreaId !== area.id && (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingAreaId(area.id); setEditingAreaName(area.name); }} className="text-[var(--brass)] text-xs hover:underline">Ubah</button>
+                  <button type="button" onClick={() => setAreaToDelete(area)} className="text-[var(--chili-light)] text-xs hover:underline">Hapus</button>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
+      <ConfirmationModal
+        isOpen={Boolean(areaToDelete)}
+        title="Hapus Area Makan"
+        message={`Area ${areaToDelete?.name || ''} akan dihapus. Meja yang masih berada di area ini akan dilepas dari zonasi, bukan dihapus.`}
+        confirmLabel="Hapus Area"
+        isLoading={deletingArea}
+        onConfirm={() => void handleDeleteArea()}
+        onCancel={() => setAreaToDelete(null)}
+      />
     </div>
   );
 }
 
-// Tables Section
-function TablesSection({ 
-  outletId, 
+// Sub-component 3: Tables
+function TablesSection({
+  outletId,
   areas,
   tables,
-  onRefresh 
-}: { 
+  onRefresh,
+}: {
   outletId: string;
   areas: DiningArea[];
   tables: RestaurantTable[];
   onRefresh: () => void;
 }) {
-  const [newTableNumber, setNewTableNumber] = useState('');
-  const [newCapacity, setNewCapacity] = useState(4);
-  const [newAreaId, setNewAreaId] = useState('');
+  const [tableNumber, setTableNumber] = useState('');
+  const [capacity, setCapacity] = useState(4);
+  const [areaId, setAreaId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingTable, setEditingTable] = useState<RestaurantTable | null>(null);
+  const [editNumber, setEditNumber] = useState('');
+  const [editCapacity, setEditCapacity] = useState(4);
+  const [editAreaId, setEditAreaId] = useState('');
+  const [tableToDelete, setTableToDelete] = useState<RestaurantTable | null>(null);
+  const [savingTable, setSavingTable] = useState(false);
+  const [deletingTable, setDeletingTable] = useState(false);
 
   const handleAddTable = async () => {
-    if (!newTableNumber.trim()) return;
-
+    if (!tableNumber.trim()) return;
     setCreating(true);
-    
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}/tables`, {
+      const token = localStorage.getItem('accessToken');
+
+      const res = await fetch(`${API_URL}/admin/outlets/${outletId}/tables`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          tableNumber: newTableNumber,
-          capacity: newCapacity,
-          areaId: newAreaId || undefined,
+          tableNumber: tableNumber.trim(),
+          capacity: Number(capacity) || 4,
+          areaId: areaId || undefined,
         }),
       });
 
-      if (response.ok) {
-        setNewTableNumber('');
-        setNewAreaId('');
+      if (res.ok) {
+        setTableNumber('');
+        setAreaId('');
         onRefresh();
+      } else {
+        const errorJson = await res.json().catch(() => ({}));
+        alert(errorJson?.error?.message || 'Gagal menambahkan meja baru.');
       }
-    } catch (error) {
-      console.error('Add table error:', error);
+    } catch (err) {
+      console.error('Create table error:', err);
     } finally {
       setCreating(false);
     }
   };
 
-  const handleToggleTableStatus = async (tableId: string, currentStatus: 'active' | 'inactive') => {
+  const handleSaveTable = async () => {
+    if (!editingTable || !editNumber.trim()) return;
+    setSavingTable(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      const response = await fetch(`${API_URL}/admin/tables/${tableId}`, {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/admin/tables/${editingTable.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tableNumber: editNumber.trim(), capacity: editCapacity, areaId: editAreaId || null }),
+      });
+      if (res.ok) {
+        setEditingTable(null);
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Update table error:', err);
+    } finally {
+      setSavingTable(false);
+    }
+  };
+
+  const handleDeleteTable = async () => {
+    if (!tableToDelete) return;
+    setDeletingTable(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_URL}/admin/tables/${tableToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setTableToDelete(null);
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Delete table error:', err);
+    } finally {
+      setDeletingTable(false);
+    }
+  };
+
+  const handleToggleTable = async (tableId: string, currentStatus: 'active' | 'inactive') => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const token = localStorage.getItem('accessToken');
+
+      const res = await fetch(`${API_URL}/admin/tables/${tableId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: currentStatus === 'active' ? 'inactive' : 'active' }),
+        body: JSON.stringify({
+          status: currentStatus === 'active' ? 'inactive' : 'active',
+        }),
       });
 
-      if (response.ok) {
+      if (res.ok) {
         onRefresh();
       }
-    } catch (error) {
-      console.error('Toggle status error:', error);
+    } catch (err) {
+      console.error('Toggle table error:', err);
     }
   };
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700">
-      <div className="p-6 border-b border-slate-700">
-        <h2 className="text-lg font-semibold mb-1">Table Configuration</h2>
-        <p className="text-gray-400 text-sm">Add and configure individual tables for reservations</p>
+    <div className="bg-[var(--panel)] border border-[var(--line)] rounded-lg space-y-4 overflow-hidden">
+      <div className="p-4 border-b border-[var(--line)]">
+        <h2 className="text-sm font-semibold text-[var(--sand)]">Konfigurasi Meja Makan</h2>
+        <p className="text-xs text-[var(--muted)]">Nomor meja unik, kapasitas kursi (pax), dan penetapan area</p>
       </div>
 
-      <div className="p-6 border-b border-slate-700">
-        <div className="flex gap-4 flex-wrap">
-          <input
-            type="text"
-            value={newTableNumber}
-            onChange={(e) => setNewTableNumber(e.target.value)}
-            placeholder="Table #"
-            className="flex-1 min-w-[120px] px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          
-          <select
-            value={newCapacity}
-            onChange={(e) => setNewCapacity(Number(e.target.value))}
-            className="px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => (
-              <option key={n} value={n}>{n} people</option>
-            ))}
-          </select>
+      {/* Add table form */}
+      <div className="p-4 border-b border-[var(--line)] bg-[var(--panel-elevated)] flex flex-wrap gap-2 items-center">
+        <input
+          type="text"
+          value={tableNumber}
+          onChange={(e) => setTableNumber(e.target.value)}
+          placeholder="No. Meja (mis. M01)"
+          className="field-input font-mono text-xs w-36"
+        />
 
-          <select
-            value={newAreaId}
-            onChange={(e) => setNewAreaId(e.target.value)}
-            className="flex-1 min-w-[150px] px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">No specific area</option>
-            {areas.map(area => (
-              <option key={area.id} value={area.id}>{area.name}</option>
-            ))}
-          </select>
+        <select
+          value={capacity}
+          onChange={(e) => setCapacity(Number(e.target.value))}
+          className="field-input font-mono text-xs w-32"
+        >
+          {[1, 2, 4, 6, 8, 10, 12, 16].map((n) => (
+            <option key={n} value={n}>{n} pax</option>
+          ))}
+        </select>
 
-          <button
-            onClick={handleAddTable}
-            disabled={creating || !newTableNumber.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            {creating ? 'Adding...' : '+ Add Table'}
-          </button>
-        </div>
+        <select
+          value={areaId}
+          onChange={(e) => setAreaId(e.target.value)}
+          className="field-input text-xs w-44"
+        >
+          <option value="">(Tanpa Area Khusus)</option>
+          {areas.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+
+        <button
+          onClick={handleAddTable}
+          disabled={creating || !tableNumber.trim()}
+          className="btn-brass text-xs"
+        >
+          {creating ? 'Menyimpan...' : '+ Tambah Meja'}
+        </button>
       </div>
 
-      {tables.length === 0 ? (
-        <div className="p-12 text-center text-gray-400">
-          No tables configured yet. Add tables to start accepting reservations.
-        </div>
-      ) : (
-        <div className="overflow-x-auto p-6">
-          <table className="w-full">
-            <thead className="bg-slate-900/50">
+      {/* Table list */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="border-b border-[var(--line)] bg-[var(--panel-elevated)] text-[var(--sand-muted)] uppercase font-mono text-[11px]">
+            <tr>
+              <th className="py-2.5 px-4">No. Meja</th>
+              <th className="py-2.5 px-4">Area Zonasi</th>
+              <th className="py-2.5 px-4">Kapasitas Tamu</th>
+              <th className="py-2.5 px-4">Status</th>
+              <th className="py-2.5 px-4 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--line)]">
+            {tables.length === 0 ? (
               <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Table #</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Area</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Capacity</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Actions</th>
+                <td colSpan={5} className="p-8 text-center text-[var(--muted)]">
+                  Belum ada meja yang terdaftar untuk cabang ini.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700">
-              {tables.map(table => (
-                <tr key={table.id} className="hover:bg-slate-700/30">
-                  <td className="py-3 px-4 text-sm font-medium">
-                    <strong>{table.tableNumber}</strong>
+            ) : (
+              tables.map((t) => editingTable?.id === t.id ? (
+                <tr key={t.id} className="bg-[var(--panel-elevated)]">
+                  <td className="py-2 px-2"><input className="field-input font-mono text-xs" value={editNumber} onChange={(e) => setEditNumber(e.target.value)} aria-label="Nomor meja" /></td>
+                  <td className="py-2 px-2">
+                    <select className="field-input text-xs" value={editAreaId} onChange={(e) => setEditAreaId(e.target.value)}>
+                      <option value="">Tanpa area</option>
+                      {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
                   </td>
-                  <td className="py-3 px-4 text-sm">
-                    {table.area?.name || '-'}
+                  <td className="py-2 px-2">
+                    <select className="field-input font-mono text-xs" value={editCapacity} onChange={(e) => setEditCapacity(Number(e.target.value))}>
+                      {[1, 2, 4, 6, 8, 10, 12, 16].map((n) => <option key={n} value={n}>{n} pax</option>)}
+                    </select>
                   </td>
-                  <td className="py-3 px-4 text-sm">
-                    {table.capacity} people
+                  <td className="py-2 px-2 text-[var(--muted)] text-xs">Simpan perubahan</td>
+                  <td className="py-2 px-2 text-right whitespace-nowrap">
+                    <button type="button" onClick={() => void handleSaveTable()} disabled={savingTable || !editNumber.trim()} className="text-[var(--pandan-light)] text-xs mr-2">Simpan</button>
+                    <button type="button" onClick={() => setEditingTable(null)} className="text-[var(--muted)] text-xs">Batal</button>
                   </td>
-                  <td className="py-3 px-4 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      table.status === 'active'
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-red-500/10 text-red-400'
-                    }`}>
-                      {table.status === 'active' ? 'Active' : 'Inactive'}
+                </tr>
+              ) : (
+                <tr key={t.id} className="hover:bg-[var(--panel-elevated)] transition-colors">
+                  <td className="py-3 px-4 font-mono font-semibold text-[var(--brass)]">
+                    {t.tableNumber}
+                  </td>
+                  <td className="py-3 px-4">
+                    {t.area?.name || <span className="text-[var(--muted)] font-mono">—</span>}
+                  </td>
+                  <td className="py-3 px-4 font-mono text-[var(--sand)]">
+                    {t.capacity} orang
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className={`badge-status ${t.status === 'active' ? 'active' : 'inactive'}`}>
+                      {t.status === 'active' ? 'Siap Digunakan' : 'Nonaktif'}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-sm">
+                  <td className="py-3 px-4 text-right">
                     <button
-                      onClick={() => handleToggleTableStatus(table.id, table.status)}
-                      className="text-blue-400 hover:text-blue-300"
+                      onClick={() => { setEditingTable(t); setEditNumber(t.tableNumber); setEditCapacity(t.capacity); setEditAreaId(t.area ? t.area.id : ''); }}
+                      className="text-xs font-mono text-[var(--brass)] hover:underline mr-3"
                     >
-                      {table.status === 'active' ? 'Deactivate' : 'Activate'}
+                      Ubah
+                    </button>
+                    <button
+                      onClick={() => setTableToDelete(t)}
+                      className="text-xs font-mono text-[var(--chili-light)] hover:underline mr-3"
+                    >
+                      Hapus
+                    </button>
+                    <button
+                      onClick={() => void handleToggleTable(t.id, t.status)}
+                      className={`text-xs font-mono hover:underline ${
+                        t.status === 'active' ? 'text-[var(--chili-light)]' : 'text-[var(--pandan-light)]'
+                      }`}
+                    >
+                      {t.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <ConfirmationModal
+        isOpen={Boolean(tableToDelete)}
+        title="Hapus / Nonaktifkan Meja"
+        message={`Meja ${tableToDelete?.tableNumber || ''} akan dihapus. Jika meja pernah memiliki riwayat reservasi, sistem otomatis menonaktifkan statusnya agar riwayat tamu tetap utuh.`}
+        confirmLabel="Hapus Meja"
+        isLoading={deletingTable}
+        onConfirm={() => void handleDeleteTable()}
+        onCancel={() => setTableToDelete(null)}
+      />
     </div>
   );
 }

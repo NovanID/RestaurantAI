@@ -6,24 +6,39 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  write(data: {
-    tenantId: string;
-    actorType: ActorType;
-    actorId?: string;
-    action: string;
-    entityType: string;
-    entityId?: string;
-    before?: Prisma.InputJsonValue;
-    after?: Prisma.InputJsonValue;
-  }) {
-    return this.prisma.auditEvent.create({ data });
+  write(
+    data: {
+      tenantId: string;
+      actorType: ActorType;
+      actorId?: string;
+      action: string;
+      entityType: string;
+      entityId?: string;
+      before?: Prisma.InputJsonValue;
+      after?: Prisma.InputJsonValue;
+    },
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+    return client.auditEvent.create({ data });
   }
 
-  list(tenantId: string) {
+  list(
+    tenantId: string,
+    options?: {
+      entityType?: string;
+      action?: string;
+      limit?: number;
+    },
+  ) {
     return this.prisma.auditEvent.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(options?.entityType ? { entityType: options.entityType } : {}),
+        ...(options?.action ? { action: options.action } : {}),
+      },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: options?.limit ?? 100,
     });
   }
 }

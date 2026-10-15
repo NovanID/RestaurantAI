@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuditService } from './audit.service';
 
@@ -8,7 +8,11 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  list(@CurrentUser() user: { tenantId: string }) {
-    return this.auditService.list(user.tenantId);
+  list(
+    @CurrentUser() user: { tenantId: string },
+    @Query('entityType') entityType?: string,
+    @Query('action') action?: string,
+  ) {
+    return this.auditService.list(user.tenantId, { entityType, action });
   }
 }
