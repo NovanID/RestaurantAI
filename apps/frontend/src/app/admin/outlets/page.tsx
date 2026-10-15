@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { ConfirmationModal } from '../components/confirmation-modal';
 
 interface Outlet {
   id: string;
@@ -19,218 +20,200 @@ interface Outlet {
 export default function OutletsPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingOutlet, setEditingOutlet] = useState<Outlet | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [outletToDelete, setOutletToDelete] = useState<Outlet | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchOutlets();
-  }, []);
-
-  const fetchOutlets = async () => {
+  const fetchOutlets = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
       const response = await fetch(`${API_URL}/admin/outlets`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
         },
       });
 
       if (response.ok) {
         const data = await response.json();
-        setOutlets(data.data || data);
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+        setOutlets(list);
+      } else {
+        throw new Error('Gagal mengambil data cabang.');
       }
-    } catch (error) {
-      console.error('Failed to fetch outlets:', error);
+    } catch (err) {
+      console.error('Failed to fetch outlets:', err);
+      setError('Data cabang outlet tidak dapat dimuat.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const handleEdit = (outlet: Outlet) => {
-    setEditingOutlet(outlet);
-    setShowModal(true);
-  };
+  useEffect(() => {
+    void fetchOutlets();
+  }, [fetchOutlets]);
 
-  const handleDelete = async (outletId: string) => {
-    if (!confirm('Yakin ingin menghapus outlet ini?')) return;
+  const handleDelete = async () => {
+    if (!outletToDelete) return;
+    setIsDeleting(true);
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      
-      const response = await fetch(`${API_URL}/admin/outlets/${outletId}`, {
+      const response = await fetch(`${API_URL}/admin/outlets/${outletToDelete.id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
         },
       });
 
       if (response.ok) {
-        fetchOutlets();
+        setOutletToDelete(null);
+        void fetchOutlets();
       } else {
-        alert('Gagal menghapus outlet');
+        alert('Gagal menghapus cabang');
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert('Terjadi kesalahan saat menghapus');
-    }
-  };
-
-  const handleSave = async (formData: FormData) => {
-    try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const outletId = editingOutlet?.id;
-      
-      const url = outletId 
-        ? `${API_URL}/admin/outlets/${outletId}`
-        : `${API_URL}/admin/outlets`;
-      
-      const method = outletId ? 'PATCH' : 'POST';
-
-      const token = localStorage.getItem('accessToken');
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(Object.fromEntries(formData)),
-      });
-
-      if (response.ok) {
-        fetchOutlets();
-        setShowModal(false);
-        setEditingOutlet(null);
-      } else {
-        const data = await response.json();
-        alert(data.error?.message || 'Gagal menyimpan outlet');
-      }
-    } catch (error) {
-      console.error('Save error:', error);
-      alert('Terjadi kesalahan saat menyimpan');
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Terjadi kesalahan saat menghapus cabang');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 antialiased">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--line)] pb-5">
         <div>
-          <h1 className="text-2xl font-bold mb-1">Outlets</h1>
-          <p className="text-gray-400 text-sm">Kelola cabang restoran dan pengaturan operasional</p>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--sand)]">
+            Cabang Restoran (Outlets)
+          </h1>
+          <p className="text-xs text-[var(--sand-muted)] mt-1">
+            Pengelolaan lokasi operasional, nomor kontak, jadwal buka, dan tata letak meja.
+          </p>
         </div>
         <Link 
           href="/admin/outlets/new"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+          className="btn-brass text-xs"
         >
-          <span>+</span>
-          <span>Tambah Outlet</span>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <span>Tambah Cabang Baru</span>
         </Link>
       </div>
 
-      {/* Outlet List */}
+      {error && (
+        <div className="bg-[var(--chili-bg)] border border-[var(--chili-border)] text-[var(--chili-light)] px-4 py-3 rounded text-xs">
+          {error}
+        </div>
+      )}
+
+      {/* Outlet Cards Grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex flex-col items-center justify-center py-20 space-y-3">
+          <div className="w-8 h-8 border-2 border-[var(--brass)] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-mono text-[var(--muted)]">Memuat data cabang outlet...</p>
         </div>
       ) : outlets.length === 0 ? (
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl p-12 border border-slate-700 text-center">
-          <div className="text-6xl mb-4">🏢</div>
-          <h3 className="text-lg font-semibold mb-2">Belum ada outlet</h3>
-          <p className="text-gray-400 mb-6">Tambahkan outlet pertama Anda untuk mulai mengatur operasional restoran</p>
-          <Link 
-            href="/admin/outlets/new"
-            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
-          >
-            <span>+</span>
-            <span>Buat Outlet Baru</span>
+        <div className="bg-[var(--panel)] border border-[var(--line)] rounded-lg p-12 text-center">
+          <div className="w-12 h-12 rounded border border-[var(--line)] bg-[var(--panel-input)] flex items-center justify-center mx-auto mb-3 text-[var(--muted)]">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+          </div>
+          <h3 className="text-sm font-semibold text-[var(--sand)]">Belum ada cabang terdaftar</h3>
+          <p className="text-xs text-[var(--sand-muted)] mt-1 mb-5">
+            Tambahkan cabang pertama Anda untuk mulai mengatur operasional dan meja makan.
+          </p>
+          <Link href="/admin/outlets/new" className="btn-brass text-xs">
+            + Tambah Cabang Sekarang
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {outlets.map((outlet) => (
             <div 
               key={outlet.id}
-              className="bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700 overflow-hidden hover:border-blue-500 transition-all group"
+              className="bg-[var(--panel)] border border-[var(--line)] rounded-lg overflow-hidden flex flex-col hover:border-[var(--line-strong)] transition-all"
             >
-              <div className={`h-2 ${outlet.isActive ? 'bg-green-500' : 'bg-gray-500'}`} />
-              
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold mb-1">{outlet.name}</h3>
-                    <p className="text-gray-400 text-sm">@{outlet.slug}</p>
+              {/* Header */}
+              <div className="p-5 flex-1">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-[var(--sand)] tracking-tight">
+                      {outlet.name}
+                    </h3>
+                    <p className="text-xs font-mono text-[var(--brass)] mt-0.5">
+                      slug: @{outlet.slug}
+                    </p>
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    outlet.isActive 
-                      ? 'bg-green-500/10 text-green-400' 
-                      : 'bg-gray-500/10 text-gray-400'
-                  }`}>
-                    {outlet.isActive ? 'Active' : 'Inactive'}
+                  <span className={`badge-status ${outlet.isActive ? 'active' : 'inactive'}`}>
+                    {outlet.isActive ? 'Aktif' : 'Nonaktif'}
                   </span>
                 </div>
 
                 {outlet.address && (
-                  <p className="text-gray-300 text-sm mb-2 flex items-start space-x-2">
-                    <svg className="w-4 h-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <p className="text-xs text-[var(--sand-muted)] flex items-start gap-2 mb-3">
+                    <svg className="w-3.5 h-3.5 mt-0.5 text-[var(--muted)] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <span>{outlet.address}, {outlet.city}</span>
+                    <span>{outlet.address}{outlet.city ? `, ${outlet.city}` : ''}</span>
                   </p>
                 )}
 
-                {(outlet.phone || outlet.email) && (
-                  <div className="space-y-1 text-sm text-gray-400">
-                    {outlet.phone && (
-                      <p className="flex items-center space-x-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                        <span>{outlet.phone}</span>
-                      </p>
-                    )}
-                    {outlet.email && (
-                      <p className="flex items-center space-x-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <span>{outlet.email}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-6 pt-4 border-t border-slate-700 flex items-center justify-between">
-                  <button 
-                    onClick={() => handleEdit(outlet)}
-                    className="text-sm text-blue-400 hover:text-blue-300 font-medium"
-                  >
-                    Edit Settings →
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(outlet.id)}
-                    className="text-sm text-red-400 hover:text-red-300 font-medium"
-                  >
-                    Delete
-                  </button>
+                <div className="space-y-1 text-xs text-[var(--muted)] font-mono border-t border-[var(--line)] pt-3">
+                  {outlet.phone && (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-[var(--muted)] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      <span>{outlet.phone}</span>
+                    </div>
+                  )}
+                  {outlet.email && (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-[var(--muted)] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <span>{outlet.email}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="px-6 py-3 bg-slate-900/50 border-t border-slate-700">
+              {/* Action Footer */}
+              <div className="px-5 py-3 bg-[var(--panel-elevated)] border-t border-[var(--line)] flex items-center justify-between text-xs">
                 <Link 
                   href={`/admin/outlets/${outlet.id}/settings`}
-                  className="block text-xs text-gray-500 hover:text-gray-400"
+                  className="font-mono text-[var(--brass)] hover:underline inline-flex items-center gap-1"
                 >
-                  Configure hours, areas & tables
+                  <span>Konfigurasi Meja & Jam</span>
+                  <span>→</span>
                 </Link>
+                <button
+                  onClick={() => setOutletToDelete(outlet)}
+                  className="font-mono text-[var(--chili-light)] hover:underline"
+                >
+                  Hapus
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add/Edit Modal - Could be implemented as separate page */}
+      <ConfirmationModal
+        isOpen={Boolean(outletToDelete)}
+        title="Nonaktifkan Cabang"
+        message={`Cabang ${outletToDelete?.name || ''} akan dinonaktifkan dan tidak lagi tampil untuk tamu. Data operasional tetap tersimpan.`}
+        confirmLabel="Nonaktifkan Cabang"
+        isLoading={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setOutletToDelete(null)}
+      />
     </div>
   );
 }
