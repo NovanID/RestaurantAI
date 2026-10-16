@@ -221,12 +221,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               Waktu Server: WIB (UTC+7)
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded bg-[var(--panel-input)] border border-[var(--line)] text-[var(--sand-muted)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--pandan)]" />
-              Database Operasional Terhubung
-            </span>
-          </div>
         </header>
 
         {/* Page Container */}
