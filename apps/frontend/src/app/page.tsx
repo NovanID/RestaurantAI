@@ -1,4 +1,31 @@
-import Link from "next/link";
+import { Suspense } from 'react';
+
+type MenuItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceIdr: number;
+  imageUrl: string | null;
+  category?: { name: string } | null;
+};
+
+async function getMenu(): Promise<MenuItem[]> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+  try {
+    const tenantId = process.env.PUBLIC_MENU_TENANT_ID;
+    if (!tenantId) return [];
+
+    const response = await fetch(`${apiUrl}/menu?tenant_id=${encodeURIComponent(tenantId)}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    return Array.isArray(payload) ? payload : payload.data ?? [];
+  } catch {
+    return [];
+  }
+}
 
 export default function Home() {
   return (
@@ -20,20 +47,6 @@ export default function Home() {
             </div>
           </div>
 
-          <nav className="flex items-center space-x-6">
-            <Link
-              href="/admin/login"
-              className="text-xs font-medium text-[#b8ad9e] hover:text-[#c89b3c] transition-colors"
-            >
-              Portal Petugas
-            </Link>
-            <Link
-              href="/admin/login"
-              className="px-4 py-2 text-xs font-semibold rounded bg-[#c89b3c] text-[#11100f] hover:bg-[#e0b457] transition-all tracking-wide"
-            >
-              Masuk Admin
-            </Link>
-          </nav>
         </div>
       </header>
 
@@ -52,22 +65,6 @@ export default function Home() {
         <p className="mt-6 text-base sm:text-lg text-[#b8ad9e] max-w-2xl leading-relaxed">
           Platform manajemen pemesanan meja, ketersediaan hidangan etalase, dan buku reservasi tamu untuk seluruh cabang Rumah Makan Padang.
         </p>
-
-        {/* Action Buttons */}
-        <div className="mt-10 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-          <Link
-            href="/admin/login"
-            className="px-6 py-3.5 text-sm font-semibold rounded bg-[#c89b3c] text-[#11100f] hover:bg-[#e0b457] transition-all shadow-lg tracking-wide text-center"
-          >
-            Buka Panel Operasional
-          </Link>
-          <a
-            href="#tentang"
-            className="px-6 py-3.5 text-sm font-medium rounded border border-[#2d2924] bg-[#181614] text-[#ede6db] hover:border-[#c89b3c]/40 hover:bg-[#201e1a] transition-all text-center"
-          >
-            Pelajari Sistem
-          </a>
-        </div>
 
         {/* Feature Highlights Grid */}
         <div className="mt-20 grid grid-cols-1 sm:grid-cols-3 gap-6 w-full text-left">
@@ -101,12 +98,88 @@ export default function Home() {
             </p>
           </div>
         </div>
+
+        {/* Public Menu */}
+        <section className="mt-24 w-full text-left" aria-labelledby="menu-title">
+          <div className="flex items-end justify-between gap-4 border-b border-[#2d2924] pb-4">
+            <div>
+              <p className="text-xs font-mono tracking-widest text-[#c89b3c] uppercase">Dari dapur kami</p>
+              <h2 id="menu-title" className="mt-2 text-2xl sm:text-3xl font-bold text-[#ede6db]">Menu Andalan</h2>
+            </div>
+            <span className="text-xs text-[#7d7365] font-mono">ETALASE HARIAN</span>
+          </div>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Suspense fallback={<p role="status">Memuat menu…</p>}>
+              <PublicMenu />
+            </Suspense>
+          </div>
+        </section>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-[#2d2924] py-8 text-center text-xs text-[#7d7365] font-mono">
         <p>© 2026 Rumah Makan Minang Asli. Seluruh hak cipta dilindungi.</p>
       </footer>
     </div>
+  );
+}
+
+async function PublicMenu() {
+  const menu = await getMenu();
+  const backendBase = new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').origin;
+
+  return menu.length > 0 ? (
+    menu.map((item) => {
+      const fullImageUrl = item.imageUrl
+        ? item.imageUrl.startsWith('http')
+          ? item.imageUrl
+          : `${backendBase}/${item.imageUrl.replace(/^\//, '')}`
+        : null;
+
+      return (
+        <article
+          key={item.id}
+          className="rounded-lg border border-[#2d2924] bg-[#181614] overflow-hidden hover:border-[#c89b3c]/50 transition-colors flex flex-col"
+        >
+          {fullImageUrl ? (
+            <div className="w-full h-40 bg-[#16201d] overflow-hidden border-b border-[#2d2924] relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={fullImageUrl}
+                alt={item.name}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <div className="w-full h-24 bg-[#16201d]/60 border-b border-[#2d2924] flex items-center justify-center text-[#7d7365] font-mono text-xs tracking-wider">
+              <span>MINANG HERITAGE</span>
+            </div>
+          )}
+
+          <div className="p-5 flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-[#7d7365]">
+                    {item.category?.name || 'Hidangan'}
+                  </p>
+                  <h3 className="mt-1 text-sm font-semibold text-[#ede6db]">{item.name}</h3>
+                </div>
+                <span className="shrink-0 text-xs font-mono text-[#c89b3c]">
+                  Rp {item.priceIdr.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-[#b8ad9e]">
+                {item.description || 'Masakan Minang dengan racikan bumbu rempah otentik.'}
+              </p>
+            </div>
+          </div>
+        </article>
+      );
+    })
+  ) : (
+    <p className="col-span-full rounded-lg border border-dashed border-[#2d2924] p-8 text-center text-sm text-[#7d7365]">
+      Menu sedang disiapkan. Silakan datang dan nikmati hidangan hari ini.
+    </p>
   );
 }

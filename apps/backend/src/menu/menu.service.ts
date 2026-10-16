@@ -81,8 +81,13 @@ export class MenuService {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.menuItem.findFirst({ where: { id, tenantId } });
       if (!before) throw new NotFoundException('Menu tidak ditemukan.');
-      const after = await tx.menuItem.update({ where: { id }, data: { isActive: false } });
-      await recordAdminAudit(tx, tenantId, actorId, 'menu_item', id, 'deactivated', before, after);
+
+      // Delete any outlet associations first
+      await tx.outletMenuItem.deleteMany({ where: { menuItemId: id, tenantId } });
+
+      // Hard delete the menu item so it does not linger as duplicate/inactive
+      await tx.menuItem.delete({ where: { id } });
+      await recordAdminAudit(tx, tenantId, actorId, 'menu_item', id, 'deleted', before, null);
       return { success: true };
     });
   }

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { getReservationStatusMeta } from '../components/status-badge';
-import { RejectionModal } from '../components/rejection-modal';
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { getReservationStatusMeta } from "../components/status-badge";
+import { RejectionModal } from "../components/rejection-modal";
 
 interface Reservation {
   id: string;
@@ -18,64 +18,60 @@ interface Reservation {
 }
 
 const STATUS_FILTERS = [
-  { value: '', label: 'Semua Status' },
-  { value: 'pending', label: 'Pending (Menunggu)' },
-  { value: 'confirmed', label: 'Terkonfirmasi' },
-  { value: 'rejected', label: 'Ditolak' },
-  { value: 'cancelled', label: 'Dibatalkan' },
-  { value: 'completed', label: 'Selesai' },
+  { value: "", label: "Semua Status" },
+  { value: "pending", label: "Pending (Menunggu)" },
+  { value: "confirmed", label: "Terkonfirmasi" },
+  { value: "rejected", label: "Ditolak" },
+  { value: "cancelled", label: "Dibatalkan" },
+  { value: "completed", label: "Selesai" },
 ];
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
 export default function ReservationsPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [status, setStatus] = useState('');
-  const [search, setSearch] = useState('');
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectingReservation, setRejectingReservation] = useState<Reservation | null>(null);
 
-  const request = useCallback(
-    async (path: string, options?: RequestInit) => {
-      const token = window.localStorage.getItem('accessToken');
-      const response = await fetch(`${apiBaseUrl}${path}`, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
-          ...options?.headers,
-        },
-      });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody?.error?.message || 'Permintaan gagal diproses.');
-      }
-      return response.json();
-    },
-    [],
-  );
+  const request = useCallback(async (path: string, options?: RequestInit) => {
+    const token = window.localStorage.getItem("accessToken");
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        ...options?.headers,
+      },
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody?.error?.message || "Permintaan gagal diproses.");
+    }
+    return response.json();
+  }, []);
 
   const loadReservations = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const params = new URLSearchParams();
-      if (status) params.set('status', status);
-      if (search.trim()) params.set('query', search.trim());
-      
+      if (status) params.set("status", status);
+      if (search.trim()) params.set("query", search.trim());
+
       const res = await request(`/reservations/admin?${params.toString()}`);
       // Unpack envelope: response interceptor wraps data in { data: [...] }
       const list: Reservation[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
-        ? res.data
-        : [];
+          ? res.data
+          : [];
       setReservations(list);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Daftar reservasi tidak dapat dimuat.';
+      const msg = err instanceof Error ? err.message : "Daftar reservasi tidak dapat dimuat.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -91,17 +87,17 @@ export default function ReservationsPage() {
     await loadReservations();
   }
 
-  async function executeStatusChange(id: string, action: 'approve' | 'reject', reason?: string) {
+  async function executeStatusChange(id: string, action: "approve" | "reject", reason?: string) {
     setProcessingId(id);
-    setError('');
+    setError("");
     try {
       await request(`/reservations/admin/${id}/${action}`, {
-        method: 'POST',
-        body: action === 'reject' ? JSON.stringify({ reason: reason || '' }) : undefined,
+        method: "POST",
+        body: action === "reject" ? JSON.stringify({ reason: reason || "" }) : undefined,
       });
       await loadReservations();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Status reservasi gagal diperbarui.';
+      const msg = err instanceof Error ? err.message : "Status reservasi gagal diperbarui.";
       setError(msg);
     } finally {
       setProcessingId(null);
@@ -110,7 +106,7 @@ export default function ReservationsPage() {
   }
 
   function handleApprove(id: string) {
-    void executeStatusChange(id, 'approve');
+    void executeStatusChange(id, "approve");
   }
 
   function openRejectModal(reservation: Reservation) {
@@ -136,7 +132,12 @@ export default function ReservationsPage() {
             className="btn-outline text-xs"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
             <span>Segarkan</span>
           </button>
@@ -155,9 +156,6 @@ export default function ReservationsPage() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Cari kode booking (mis. RSV-123) atau nama tamu..."
             />
-            <svg className="w-4 h-4 text-[var(--muted)] absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
           </div>
           <div className="w-full md:w-56">
             <select
@@ -183,7 +181,7 @@ export default function ReservationsPage() {
       {error && (
         <div className="bg-[var(--chili-bg)] border border-[var(--chili-border)] text-[var(--chili-light)] px-4 py-3 rounded text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError('')} className="underline text-[11px] ml-4">
+          <button onClick={() => setError("")} className="underline text-[11px] ml-4">
             Tutup
           </button>
         </div>
@@ -232,7 +230,10 @@ export default function ReservationsPage() {
                         {reservation.code}
                       </span>
                       {reservation.notes && (
-                        <div className="text-[10px] text-[var(--muted)] mt-0.5 line-clamp-1 italic" title={reservation.notes}>
+                        <div
+                          className="text-[10px] text-[var(--muted)] mt-0.5 line-clamp-1 italic"
+                          title={reservation.notes}
+                        >
                           "{reservation.notes}"
                         </div>
                       )}
@@ -250,13 +251,13 @@ export default function ReservationsPage() {
 
                     {/* Schedule */}
                     <td className="py-3 px-4 font-mono text-[var(--sand-muted)]">
-                      {new Date(reservation.startAt).toLocaleString('id-ID', {
-                        weekday: 'short',
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
+                      {new Date(reservation.startAt).toLocaleString("id-ID", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
                       })}
                     </td>
 
@@ -264,7 +265,10 @@ export default function ReservationsPage() {
                     <td className="py-3 px-4">
                       <div className="text-[var(--sand)]">{reservation.outlet?.name}</div>
                       <div className="font-mono text-[11px] text-[var(--muted)]">
-                        Meja: <span className="text-[var(--sand-muted)] font-semibold">{reservation.table?.tableNumber}</span>
+                        Meja:{" "}
+                        <span className="text-[var(--sand-muted)] font-semibold">
+                          {reservation.table?.tableNumber}
+                        </span>
                       </div>
                     </td>
 
@@ -278,13 +282,14 @@ export default function ReservationsPage() {
                       {(() => {
                         const meta = getReservationStatusMeta(reservation.status);
                         return (
-                          <span className={`badge-status ${meta.badgeClass}`}>
-                            {meta.label}
-                          </span>
+                          <span className={`badge-status ${meta.badgeClass}`}>{meta.label}</span>
                         );
                       })()}
                       {reservation.rejectionReason && (
-                        <div className="text-[10px] text-[var(--chili-light)] mt-1 line-clamp-1" title={reservation.rejectionReason}>
+                        <div
+                          className="text-[10px] text-[var(--chili-light)] mt-1 line-clamp-1"
+                          title={reservation.rejectionReason}
+                        >
                           Alasan: {reservation.rejectionReason}
                         </div>
                       )}
@@ -292,7 +297,7 @@ export default function ReservationsPage() {
 
                     {/* Actions */}
                     <td className="py-3 px-4 text-right">
-                      {reservation.status === 'pending' ? (
+                      {reservation.status === "pending" ? (
                         <div className="inline-flex items-center gap-1.5 justify-end">
                           <button
                             disabled={processingId === reservation.id}
@@ -333,12 +338,12 @@ export default function ReservationsPage() {
 
       <RejectionModal
         isOpen={Boolean(rejectingReservation)}
-        reservationCode={rejectingReservation?.code || ''}
+        reservationCode={rejectingReservation?.code || ""}
         customerName={rejectingReservation?.customer?.name}
         isLoading={Boolean(processingId)}
         onConfirm={(reason) => {
           if (rejectingReservation) {
-            void executeStatusChange(rejectingReservation.id, 'reject', reason);
+            void executeStatusChange(rejectingReservation.id, "reject", reason);
           }
         }}
         onCancel={() => setRejectingReservation(null)}

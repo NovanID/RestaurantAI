@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ConfirmationModal } from '../components/confirmation-modal';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ConfirmationModal } from "../components/confirmation-modal";
 
 interface MenuItem {
   id: string;
@@ -28,34 +28,34 @@ export default function MenuItemsPage() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedAvailability, setSelectedAvailability] = useState('');
-  
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedAvailability, setSelectedAvailability] = useState("");
+
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     priceIdr: 0,
-    categoryId: '',
-    tags: '',
+    categoryId: "",
+    tags: "",
     isActive: true,
     isAvailable: true,
-    imageUrl: '',
+    imageUrl: "",
   });
   const [isUploading, setIsUploading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const token = localStorage.getItem('accessToken');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const token = localStorage.getItem("accessToken");
       const headers = { Authorization: `Bearer ${token}` };
 
       const [itemsRes, catsRes] = await Promise.all([
@@ -66,15 +66,23 @@ export default function MenuItemsPage() {
       if (itemsRes.ok && catsRes.ok) {
         const itemsJson = await itemsRes.json();
         const catsJson = await catsRes.json();
-        
-        const itemsList = Array.isArray(itemsJson) ? itemsJson : (Array.isArray(itemsJson?.data) ? itemsJson.data : []);
-        const catsList = Array.isArray(catsJson) ? catsJson : (Array.isArray(catsJson?.data) ? catsJson.data : []);
-        
+
+        const itemsList = Array.isArray(itemsJson)
+          ? itemsJson
+          : Array.isArray(itemsJson?.data)
+            ? itemsJson.data
+            : [];
+        const catsList = Array.isArray(catsJson)
+          ? catsJson
+          : Array.isArray(catsJson?.data)
+            ? catsJson.data
+            : [];
+
         setItems(itemsList);
         setCategories(catsList);
       }
     } catch (error) {
-      console.error('Failed to fetch menu data:', error);
+      console.error("Failed to fetch menu data:", error);
     } finally {
       setIsLoading(false);
     }
@@ -83,26 +91,26 @@ export default function MenuItemsPage() {
   useEffect(() => {
     if (!showModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setShowModal(false);
         setEditingItem(null);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showModal]);
 
   const handleEdit = (item: MenuItem) => {
     setEditingItem(item);
     setFormData({
       name: item.name,
-      description: item.description || '',
+      description: item.description || "",
       priceIdr: item.priceIdr,
-      categoryId: item.categoryId || '',
-      tags: item.tags?.join(', ') || '',
+      categoryId: item.categoryId || "",
+      tags: item.tags?.join(", ") || "",
       isActive: item.isActive,
       isAvailable: item.isAvailable,
-      imageUrl: item.imageUrl || '',
+      imageUrl: item.imageUrl || "",
     });
     setShowModal(true);
   };
@@ -116,11 +124,11 @@ export default function MenuItemsPage() {
     setIsDeleting(true);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const token = localStorage.getItem('accessToken');
-      
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const token = localStorage.getItem("accessToken");
+
       const response = await fetch(`${API_URL}/admin/menu-items/${itemToDelete.id}`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -128,11 +136,11 @@ export default function MenuItemsPage() {
         setItemToDelete(null);
         void fetchData();
       } else {
-        alert('Gagal menghapus item menu.');
+        alert("Gagal menghapus item menu.");
       }
     } catch (error) {
-      console.error('Delete error:', error);
-      alert('Terjadi kesalahan saat menghapus menu.');
+      console.error("Delete error:", error);
+      alert("Terjadi kesalahan saat menghapus menu.");
     } finally {
       setIsDeleting(false);
     }
@@ -140,13 +148,13 @@ export default function MenuItemsPage() {
 
   const handleToggleStatus = async (itemId: string, currentStatus: boolean) => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const token = localStorage.getItem('accessToken');
-      
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const token = localStorage.getItem("accessToken");
+
       const response = await fetch(`${API_URL}/admin/menu-items/${itemId}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isActive: !currentStatus }),
@@ -156,19 +164,19 @@ export default function MenuItemsPage() {
         void fetchData();
       }
     } catch (error) {
-      console.error('Toggle status error:', error);
+      console.error("Toggle status error:", error);
     }
   };
 
   const handleToggleAvailability = async (itemId: string, currentStatus: boolean) => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const token = localStorage.getItem('accessToken');
-      
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const token = localStorage.getItem("accessToken");
+
       const response = await fetch(`${API_URL}/admin/menu-items/${itemId}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isAvailable: !currentStatus }),
@@ -178,7 +186,7 @@ export default function MenuItemsPage() {
         void fetchData();
       }
     } catch (error) {
-      console.error('Toggle availability error:', error);
+      console.error("Toggle availability error:", error);
     }
   };
 
@@ -188,30 +196,33 @@ export default function MenuItemsPage() {
 
     setIsSaving(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-      const token = localStorage.getItem('accessToken');
-      
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const token = localStorage.getItem("accessToken");
+
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         priceIdr: Math.floor(Number(formData.priceIdr) || 0),
         categoryId: formData.categoryId || undefined,
-        tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        tags: formData.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         isActive: formData.isActive,
         isAvailable: formData.isAvailable,
         imageUrl: formData.imageUrl.trim() || undefined,
       };
 
-      const endpoint = editingItem 
+      const endpoint = editingItem
         ? `${API_URL}/admin/menu-items/${editingItem.id}`
         : `${API_URL}/admin/menu-items`;
-      
-      const method = editingItem ? 'PATCH' : 'POST';
+
+      const method = editingItem ? "PATCH" : "POST";
 
       const response = await fetch(endpoint, {
         method,
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
@@ -223,11 +234,11 @@ export default function MenuItemsPage() {
         setEditingItem(null);
       } else {
         const data = await response.json().catch(() => ({}));
-        alert(data.error?.message || 'Gagal menyimpan item menu');
+        alert(data.error?.message || "Gagal menyimpan item menu");
       }
     } catch (error) {
-      console.error('Save error:', error);
-      alert('Terjadi kesalahan saat menyimpan menu');
+      console.error("Save error:", error);
+      alert("Terjadi kesalahan saat menyimpan menu");
     } finally {
       setIsSaving(false);
     }
@@ -235,11 +246,14 @@ export default function MenuItemsPage() {
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      const matchSearch = !search.trim() || 
+      const matchSearch =
+        !search.trim() ||
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         (item.description && item.description.toLowerCase().includes(search.toLowerCase()));
       const matchCat = !selectedCategory || item.categoryId === selectedCategory;
-      const matchAvail = !selectedAvailability || (selectedAvailability === 'ready' ? item.isAvailable : !item.isAvailable);
+      const matchAvail =
+        !selectedAvailability ||
+        (selectedAvailability === "ready" ? item.isAvailable : !item.isAvailable);
       return matchSearch && matchCat && matchAvail;
     });
   }, [items, search, selectedCategory, selectedAvailability]);
@@ -256,18 +270,18 @@ export default function MenuItemsPage() {
             Pengaturan harga, ketersediaan stok dapur (ready/habis), dan status aktif hidangan.
           </p>
         </div>
-        <button 
+        <button
           onClick={() => {
             setEditingItem(null);
             setFormData({
-              name: '',
-              description: '',
+              name: "",
+              description: "",
               priceIdr: 0,
-              categoryId: categories[0]?.id || '',
-              tags: '',
+              categoryId: categories[0]?.id || "",
+              tags: "",
               isActive: true,
               isAvailable: true,
-              imageUrl: '',
+              imageUrl: "",
             });
             setShowModal(true);
           }}
@@ -291,20 +305,19 @@ export default function MenuItemsPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="w-full field-input text-xs pl-9"
             />
-            <svg className="w-4 h-4 text-[var(--muted)] absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
           </div>
 
           <div>
-            <select 
-              value={selectedCategory} 
+            <select
+              value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full field-input text-xs"
             >
               <option value="">Semua Kategori</option>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
           </div>
@@ -359,24 +372,40 @@ export default function MenuItemsPage() {
                   <tr key={item.id} className="hover:bg-[var(--panel-elevated)] transition-colors">
                     {/* Name & desc */}
                     <td className="py-3 px-4">
-                      <div className="font-semibold text-[var(--sand)]">{item.name}</div>
-                      {item.description && (
-                        <div className="text-[11px] text-[var(--muted)] line-clamp-1 max-w-sm mt-0.5">
-                          {item.description}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded border border-[var(--line)] bg-[var(--panel-input)] shrink-0 overflow-hidden flex items-center justify-center">
+                          {item.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.imageUrl.startsWith('/') ? `${new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').origin}${item.imageUrl}` : item.imageUrl}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="font-mono text-[10px] text-[var(--muted)] font-bold">RM</span>
+                          )}
                         </div>
-                      )}
+                        <div className="min-w-0">
+                          <div className="font-semibold text-[var(--sand)]">{item.name}</div>
+                          {item.description && (
+                            <div className="text-[11px] text-[var(--muted)] line-clamp-1 max-w-sm mt-0.5">
+                              {item.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Category */}
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded bg-[var(--panel-input)] border border-[var(--line)] font-mono text-[11px] text-[var(--sand-muted)]">
-                        {item.category?.name || 'Tanpa Kategori'}
+                        {item.category?.name || "Tanpa Kategori"}
                       </span>
                     </td>
 
                     {/* Price */}
                     <td className="py-3 px-4 font-mono font-semibold text-[var(--sand)]">
-                      Rp {item.priceIdr.toLocaleString('id-ID')}
+                      Rp {item.priceIdr.toLocaleString("id-ID")}
                     </td>
 
                     {/* Tags */}
@@ -384,7 +413,10 @@ export default function MenuItemsPage() {
                       <div className="flex flex-wrap gap-1">
                         {item.tags && item.tags.length > 0 ? (
                           item.tags.map((t) => (
-                            <span key={t} className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[var(--panel-elevated)] border border-[var(--line)] text-[var(--sand-muted)]">
+                            <span
+                              key={t}
+                              className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[var(--panel-elevated)] border border-[var(--line)] text-[var(--sand-muted)]"
+                            >
                               #{t}
                             </span>
                           ))
@@ -398,10 +430,10 @@ export default function MenuItemsPage() {
                     <td className="py-3 px-4">
                       <button
                         onClick={() => void handleToggleAvailability(item.id, item.isAvailable)}
-                        className={`badge-status cursor-pointer ${item.isAvailable ? 'confirmed' : 'rejected'}`}
+                        className={`badge-status cursor-pointer ${item.isAvailable ? "confirmed" : "rejected"}`}
                         title="Klik untuk mengubah ketersediaan stok dapur"
                       >
-                        {item.isAvailable ? '● Ready' : '○ Habis'}
+                        {item.isAvailable ? "● Ready" : "○ Habis"}
                       </button>
                     </td>
 
@@ -409,10 +441,10 @@ export default function MenuItemsPage() {
                     <td className="py-3 px-4">
                       <button
                         onClick={() => void handleToggleStatus(item.id, item.isActive)}
-                        className={`badge-status cursor-pointer ${item.isActive ? 'active' : 'inactive'}`}
+                        className={`badge-status cursor-pointer ${item.isActive ? "active" : "inactive"}`}
                         title="Klik untuk mengaktifkan / menonaktifkan"
                       >
-                        {item.isActive ? 'Aktif' : 'Nonaktif'}
+                        {item.isActive ? "Aktif" : "Nonaktif"}
                       </button>
                     </td>
 
@@ -442,7 +474,9 @@ export default function MenuItemsPage() {
         </div>
 
         <div className="p-3 border-t border-[var(--line)] bg-[var(--panel-elevated)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
-          <span>Total Item Menu: {filteredItems.length} dari {items.length} item</span>
+          <span>
+            Total Item Menu: {filteredItems.length} dari {items.length} item
+          </span>
           <span>Buku Dapur Rumah Makan Minang</span>
         </div>
       </div>
@@ -457,7 +491,7 @@ export default function MenuItemsPage() {
           <div className="bg-[var(--panel)] border border-[var(--line-strong)] rounded-lg max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--line)] pb-3">
               <h2 className="text-sm font-semibold text-[var(--sand)] uppercase tracking-wider">
-                {editingItem ? 'Ubah Rincian Hidangan' : 'Tambah Hidangan Baru'}
+                {editingItem ? "Ubah Rincian Hidangan" : "Tambah Hidangan Baru"}
               </h2>
               <button
                 onClick={() => {
@@ -491,7 +525,9 @@ export default function MenuItemsPage() {
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, description: e.target.value }))
+                  }
                   placeholder="Keterangan bumbu, tekstur rasa, atau catatan sajian..."
                   rows={2}
                   className="w-full field-input resize-none"
@@ -506,7 +542,12 @@ export default function MenuItemsPage() {
                   <input
                     type="number"
                     value={formData.priceIdr}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, priceIdr: parseFloat(e.target.value) || 0 }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        priceIdr: parseFloat(e.target.value) || 0,
+                      }))
+                    }
                     min="0"
                     step="500"
                     placeholder="28000"
@@ -521,12 +562,16 @@ export default function MenuItemsPage() {
                   </label>
                   <select
                     value={formData.categoryId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, categoryId: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, categoryId: e.target.value }))
+                    }
                     className="w-full field-input"
                   >
                     <option value="">Pilih Kategori...</option>
                     {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -545,7 +590,7 @@ export default function MenuItemsPage() {
                     className="flex-1 field-input font-mono text-xs"
                   />
                   <label className="btn-outline text-xs whitespace-nowrap cursor-pointer">
-                    {isUploading ? 'Mengunggah...' : 'Pilih File'}
+                    {isUploading ? "Mengunggah..." : "Pilih File"}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -556,12 +601,13 @@ export default function MenuItemsPage() {
                         if (!file) return;
                         setIsUploading(true);
                         try {
-                          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-                          const token = localStorage.getItem('accessToken');
+                          const API_URL =
+                            process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+                          const token = localStorage.getItem("accessToken");
                           const body = new FormData();
-                          body.append('file', file);
+                          body.append("file", file);
                           const res = await fetch(`${API_URL}/admin/menu-items/upload`, {
-                            method: 'POST',
+                            method: "POST",
                             headers: { Authorization: `Bearer ${token}` },
                             body,
                           });
@@ -569,10 +615,10 @@ export default function MenuItemsPage() {
                           if (res.ok && json.data?.url) {
                             setFormData((prev) => ({ ...prev, imageUrl: json.data.url }));
                           } else {
-                            alert(json.error?.message || 'Gagal mengunggah file gambar.');
+                            alert(json.error?.message || "Gagal mengunggah file gambar.");
                           }
                         } catch {
-                          alert('Gagal menghubungi server untuk upload gambar.');
+                          alert("Gagal menghubungi server untuk upload gambar.");
                         } finally {
                           setIsUploading(false);
                         }
@@ -580,6 +626,26 @@ export default function MenuItemsPage() {
                     />
                   </label>
                 </div>
+                {formData.imageUrl && (
+                  <div className="mt-2 flex items-center gap-3 p-2 rounded bg-[var(--panel-input)] border border-[var(--line)]">
+                    <div className="w-12 h-12 rounded overflow-hidden bg-[var(--panel-elevated)] border border-[var(--line)] shrink-0 flex items-center justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={formData.imageUrl.startsWith('/') ? `${new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').origin}${formData.imageUrl}` : formData.imageUrl}
+                        key={formData.imageUrl}
+                        alt="Preview Foto Menu"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-mono text-[var(--sand)] truncate">{formData.imageUrl}</p>
+
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -600,7 +666,9 @@ export default function MenuItemsPage() {
                   <input
                     type="checkbox"
                     checked={formData.isAvailable}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, isAvailable: e.target.checked }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, isAvailable: e.target.checked }))
+                    }
                     className="accent-[var(--brass)]"
                   />
                   <span className="text-[var(--sand)]">Stok Ready (Tersedia)</span>
@@ -610,7 +678,9 @@ export default function MenuItemsPage() {
                   <input
                     type="checkbox"
                     checked={formData.isActive}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, isActive: e.target.checked }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, isActive: e.target.checked }))
+                    }
                     className="accent-[var(--brass)]"
                   />
                   <span className="text-[var(--sand)]">Status Aktif di Menu</span>
@@ -633,7 +703,7 @@ export default function MenuItemsPage() {
                   disabled={isSaving || !formData.name.trim()}
                   className="btn-brass text-xs"
                 >
-                  {isSaving ? 'Menyimpan...' : (editingItem ? 'Simpan Perubahan' : 'Buat Item Menu')}
+                  {isSaving ? "Menyimpan..." : editingItem ? "Simpan Perubahan" : "Buat Item Menu"}
                 </button>
               </div>
             </form>
@@ -644,7 +714,7 @@ export default function MenuItemsPage() {
       <ConfirmationModal
         isOpen={Boolean(itemToDelete)}
         title="Hapus Item Menu"
-        message={`Item "${itemToDelete?.name || ''}" akan dihapus dari daftar menu aktif cabang.`}
+        message={`Item "${itemToDelete?.name || ""}" akan dihapus dari daftar menu aktif cabang.`}
         confirmLabel="Hapus Menu"
         isLoading={isDeleting}
         onConfirm={() => void handleDelete()}
