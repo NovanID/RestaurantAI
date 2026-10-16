@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AvailabilityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async find(outletId: string, date: string, time: string, partySize: number) {
+  async find(outletId: string, date: string, time: string, partySize: number, excludeReservationId?: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time) || partySize < 1) {
       throw new BadRequestException('Tanggal, waktu, dan jumlah tamu tidak valid.');
     }
@@ -34,6 +34,7 @@ export class AvailabilityService {
         reservations: {
           none: {
             status: { in: ['pending', 'confirmed'] },
+            ...(excludeReservationId ? { id: { not: excludeReservationId } } : {}),
             startAt: { lt: endAt },
             endAt: { gt: startAt },
           },

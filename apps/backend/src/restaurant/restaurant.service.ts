@@ -21,9 +21,14 @@ export class RestaurantService {
     });
   }
 
-  async openingHours(tenantId: string, outletId: string) {
-    await this.ownedOutlet(tenantId, outletId);
-    return this.prisma.openingHour.findMany({ where: { tenantId, outletId }, orderBy: { weekday: 'asc' } });
+  async openingHours(tenantId: string | undefined, outletId: string) {
+    if (tenantId) {
+      await this.ownedOutlet(tenantId, outletId);
+    }
+    return this.prisma.openingHour.findMany({
+      where: { outletId, ...(tenantId ? { tenantId } : {}) },
+      orderBy: { weekday: 'asc' },
+    });
   }
 
   async updateOutlet(tenantId: string, actorId: string, id: string, data: { name?: string; address?: string | null; city?: string | null; phone?: string | null; whatsapp?: string | null; email?: string | null; isActive?: boolean; defaultDurationMinutes?: number; minNoticeMinutes?: number; maxAdvanceDays?: number; changeCutoffMinutes?: number; maxPartySize?: number; autoConfirm?: boolean }) {
