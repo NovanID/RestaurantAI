@@ -4,10 +4,12 @@ import { AvailabilityModule } from '../availability/availability.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReservationsController } from './reservations.controller';
 import { ReservationsService } from './reservations.service';
+import { ReservationExpiryScheduler } from './reservation-expiry.scheduler';
 
 @Module({
   imports: [AuthModule, PrismaModule, AvailabilityModule],
   controllers: [ReservationsController],
-  providers: [ReservationsService],
+  providers: [ReservationsService, ReservationExpiryScheduler],
+  exports: [ReservationsService],
 })
 export class ReservationsModule {}

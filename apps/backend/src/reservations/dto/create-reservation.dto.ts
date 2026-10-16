@@ -8,4 +8,8 @@ export class CreateReservationDto {
   @IsString() @MaxLength(100) name: string;
   @IsString() @MaxLength(30) phone: string;
   @IsOptional() @IsString() @MaxLength(500) notes?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  idempotencyKey?: string;
 }
