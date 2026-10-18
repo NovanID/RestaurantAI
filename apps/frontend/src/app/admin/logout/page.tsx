@@ -7,25 +7,27 @@ export default function LogoutPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Clear authentication tokens
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('tenantSlug');
     
-    // Optionally clear cookies if set server-side
     document.cookie = 'accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     document.cookie = 'tenantSlug=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 
-    // Redirect to login after clearing
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       router.push('/admin/login');
-    }, 500);
+    }, 400);
+
+    return () => clearTimeout(timer);
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
-      <div className="text-center space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="text-gray-400">Logging out...</p>
+    <div className="min-h-screen flex items-center justify-center bg-[var(--ironwood)] text-[var(--sand)]">
+      <div className="text-center space-y-3">
+        <div className="w-8 h-8 border-2 border-[var(--brass)] border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-xs font-mono text-[var(--sand-muted)] uppercase tracking-wider">
+          Menutup sesi petugas...
+        </p>
       </div>
     </div>
   );

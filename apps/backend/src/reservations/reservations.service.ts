@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ListReservationsDto } from './dto/list-reservations.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 @Injectable()
 export class ReservationsService {
@@ -60,6 +61,65 @@ export class ReservationsService {
     return reservation;
   }
 
+  async update(code: string, input: UpdateReservationDto) {
+    const reservation = await this.verify(code, input.phoneLast4);
+    if (!['pending', 'confirmed'].includes(reservation.status)) {
+      throw new ConflictException('Reservasi tidak dapat diubah.');
+    }
+    const cutoff = reservation.startAt.getTime() - reservation.outlet.changeCutoffMinutes * 60_000;
+    if (Date.now() >= cutoff) {
+      throw new ConflictException('Batas waktu perubahan reservasi telah lewat.');
+    }
+
+    const local = new Date(reservation.startAt.getTime() + 7 * 60 * 60_000).toISOString();
+    const availability = await this.availabilityService.find(
+      reservation.outletId,
+      input.date ?? local.slice(0, 10),
+      input.time ?? local.slice(11, 16),
+      input.partySize ?? reservation.partySize,
+      reservation.id,
+    );
+    if (!availability.available || !availability.startAt || !availability.endAt) {
+      throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot tidak tersedia.' });
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.reservation.updateMany({
+          where: { id: reservation.id, version: reservation.version, status: reservation.status },
+          data: {
+            startAt: availability.startAt,
+            endAt: availability.endAt,
+            tableId: availability.tables[0].id,
+            partySize: input.partySize ?? reservation.partySize,
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+            version: { increment: 1 },
+          },
+        });
+        if (updated.count !== 1) throw new ConflictException('Reservasi berubah. Silakan muat ulang.');
+        const after = await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: reservation.tenantId,
+            actorType: 'customer',
+            actorId: reservation.customerId,
+            action: 'reservation.updated',
+            entityType: 'reservation',
+            entityId: reservation.id,
+            before: { startAt: reservation.startAt.toISOString(), partySize: reservation.partySize },
+            after: { startAt: after.startAt.toISOString(), partySize: after.partySize },
+          },
+        });
+        return after;
+      });
+    } catch (error) {
+      if (this.isSlotConflict(error)) {
+        throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot baru saja diambil tamu lain.' });
+      }
+      throw error;
+    }
+  }
+
   async cancel(code: string, phoneLast4: string, actorId?: string) {
     const reservation = await this.verify(code, phoneLast4);
     if (!['pending', 'confirmed'].includes(reservation.status)) {
@@ -70,11 +130,12 @@ export class ReservationsService {
     const actualActorId = actorId || reservation.customerId;
     
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.reservation.update({
-        where: { id: reservation.id },
-        data: { status: 'cancelled' },
+      const updated = await tx.reservation.updateMany({
+        where: { id: reservation.id, status: reservation.status, version: reservation.version },
+        data: { status: 'cancelled', version: { increment: 1 } },
       });
-      
+      if (updated.count !== 1) throw new ConflictException('Reservasi berubah. Silakan muat ulang.');
+      const after = await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
       await tx.reservationStatusHistory.create({
         data: {
           tenantId: reservation.tenantId,
@@ -100,8 +161,50 @@ export class ReservationsService {
         },
       });
       
-      return updated;
+      return after;
     });
+  }
+
+  async expirePending(now = new Date()) {
+    const expired = await this.prisma.reservation.findMany({
+      where: { status: 'pending', expiresAt: { lte: now } },
+      select: { id: true, tenantId: true },
+    });
+    if (expired.length === 0) return { expired: 0 };
+
+    let count = 0;
+    for (const item of expired) {
+      await this.prisma.$transaction(async (tx) => {
+        const changed = await tx.reservation.updateMany({
+          where: { id: item.id, status: 'pending', expiresAt: { lte: now } },
+          data: { status: 'expired', version: { increment: 1 } },
+        });
+        if (changed.count !== 1) return;
+        await tx.reservationStatusHistory.create({
+          data: {
+            tenantId: item.tenantId,
+            reservationId: item.id,
+            fromStatus: 'pending',
+            toStatus: 'expired',
+            actorType: 'system',
+            reason: 'Batas waktu konfirmasi reservasi telah lewat',
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: item.tenantId,
+            actorType: 'system',
+            action: 'reservation.expired',
+            entityType: 'reservation',
+            entityId: item.id,
+            before: { status: 'pending' },
+            after: { status: 'expired' },
+          },
+        });
+        count += 1;
+      });
+    }
+    return { expired: count };
   }
 
   list(tenantId: string, query: ListReservationsDto) {
@@ -150,13 +253,16 @@ export class ReservationsService {
         throw new ConflictException('Hanya reservasi pending yang dapat diproses.');
       }
 
-      const updated = await tx.reservation.update({
-        where: { id },
+      const updated = await tx.reservation.updateMany({
+        where: { id, status: 'pending', version: reservation.version },
         data: {
           status,
+          version: { increment: 1 },
           ...(status === 'rejected' ? { rejectionReason: reason ?? null } : {}),
         },
       });
+      if (updated.count !== 1) throw new ConflictException('Status reservasi telah berubah.');
+      const after = await tx.reservation.findUniqueOrThrow({ where: { id } });
       await tx.reservationStatusHistory.create({
         data: {
           tenantId,
@@ -180,7 +286,7 @@ export class ReservationsService {
           after: { status },
         },
       });
-      return updated;
+      return after;
     });
   }
 

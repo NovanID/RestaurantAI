@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface FormData {
   name: string;
@@ -16,6 +17,7 @@ interface FormData {
 export default function CreateOutletPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({
     name: '',
     slug: '',
@@ -27,157 +29,182 @@ export default function CreateOutletPage() {
   });
 
   const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+      const token = localStorage.getItem('accessToken');
       
       const response = await fetch(`${API_URL}/admin/outlets`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(formData),
       });
 
       if (response.ok) {
-        // Redirect to outlets list
         router.push('/admin/outlets');
       } else {
-        const data = await response.json();
-        alert(data.error?.message || 'Failed to create outlet');
+        const data = await response.json().catch(() => ({}));
+        setError(data.error?.message || 'Gagal menambahkan cabang outlet.');
       }
-    } catch (error) {
-      console.error('Create error:', error);
-      alert('An error occurred while creating outlet');
+    } catch (err) {
+      console.error('Create error:', err);
+      setError('Terjadi kendala jaringan saat menghubungi server.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <a href="/admin/outlets" className="text-sm text-gray-400 hover:text-gray-300 flex items-center space-x-1 mb-4">
+    <div className="max-w-2xl mx-auto space-y-6 antialiased">
+      <div>
+        <Link 
+          href="/admin/outlets" 
+          className="text-xs font-mono text-[var(--muted)] hover:text-[var(--sand)] inline-flex items-center gap-1.5 mb-3"
+        >
           <span>←</span>
-          <span>Back to Outlets</span>
-        </a>
-        <h1 className="text-2xl font-bold">Create New Outlet</h1>
-        <p className="text-gray-400 text-sm mt-1">Add a new restaurant location to manage</p>
+          <span>Kembali ke Daftar Cabang</span>
+        </Link>
+        <h1 className="text-xl font-bold tracking-tight text-[var(--sand)]">
+          Tambah Cabang Restoran Baru
+        </h1>
+        <p className="text-xs text-[var(--sand-muted)] mt-1">
+          Daftarkan lokasi fisik rumah makan Minang untuk operasional meja dan reservasi.
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700 p-8 space-y-6">
+      {error && (
+        <div className="bg-[var(--chili-bg)] border border-[var(--chili-border)] text-[var(--chili-light)] px-4 py-3 rounded text-xs">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-[var(--panel)] border border-[var(--line)] rounded-lg p-6 space-y-5">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Outlet Name *</label>
+          <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+            Nama Cabang Restoran *
+          </label>
           <input
             type="text"
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
-            placeholder="e.g., Restaurant AI - Kemang"
+            placeholder="mis. Rumah Makan Minang - Cabang Tebet"
             required
-            className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full field-input text-xs"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Slug *</label>
+          <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+            Slug URL Identitas *
+          </label>
           <input
             type="text"
             value={formData.slug}
             onChange={(e) => handleInputChange('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-            placeholder="e.g., kemang"
+            placeholder="mis. tebet"
             required
-            className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full field-input font-mono text-xs"
           />
-          <p className="text-xs text-gray-500 mt-1">URL-friendly identifier (letters, numbers, hyphens)</p>
+          <p className="text-[11px] text-[var(--muted)] mt-1 font-mono">
+            Hanya huruf kecil, angka, dan tanda hubung (-).
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Address</label>
+            <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+              Alamat Lengkap
+            </label>
             <textarea
               value={formData.address}
               onChange={(e) => handleInputChange('address', e.target.value)}
-              placeholder="Street address..."
+              placeholder="Jl. Tebet Barat Dalam Raya No. 12..."
               rows={2}
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full field-input text-xs resize-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">City</label>
+            <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+              Kota / Wilayah
+            </label>
             <input
               type="text"
               value={formData.city}
               onChange={(e) => handleInputChange('city', e.target.value)}
-              placeholder="e.g., Jakarta Selatan"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="mis. Jakarta Selatan"
+              className="w-full field-input text-xs"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Phone</label>
+            <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+              Nomor Telepon
+            </label>
             <input
               type="tel"
               value={formData.phone}
               onChange={(e) => handleInputChange('phone', e.target.value)}
-              placeholder="+62 21 xxx xxxx"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="021-8291122"
+              className="w-full field-input font-mono text-xs"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">WhatsApp</label>
+            <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+              WhatsApp CS Outlet
+            </label>
             <input
               type="tel"
               value={formData.whatsapp}
               onChange={(e) => handleInputChange('whatsapp', e.target.value)}
-              placeholder="+62 8xx xxxx xxxx"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="081299991122"
+              className="w-full field-input font-mono text-xs"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+          <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+            Email Cabang
+          </label>
           <input
             type="email"
             value={formData.email}
             onChange={(e) => handleInputChange('email', e.target.value)}
-            placeholder="contact@restaurant.com"
-            className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="tebet@minangasli.com"
+            className="w-full field-input font-mono text-xs"
           />
         </div>
 
-        <div className="flex gap-4 pt-4 border-t border-slate-700">
+        <div className="flex gap-3 pt-4 border-t border-[var(--line)] justify-end">
+          <Link
+            href="/admin/outlets"
+            className="btn-outline text-xs"
+          >
+            Batal
+          </Link>
           <button
             type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            disabled={loading || !formData.name.trim() || !formData.slug.trim()}
+            className="btn-brass text-xs"
           >
-            {loading ? 'Creating...' : 'Create Outlet'}
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => router.push('/admin/outlets')}
-            className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
-          >
-            Cancel
+            {loading ? 'Menyimpan...' : 'Daftarkan Cabang'}
           </button>
         </div>
       </form>
     </div>
   );
 }
-
-// Note: Need to convert formData to use state properly
-// This is a simplified version for Task completion

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ListReservationsDto } from './dto/list-reservations.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
@@ -6,6 +6,7 @@ import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { VerifyReservationDto } from './dto/verify-reservation.dto';
 import { CancelReservationDto } from './dto/cancel-reservation.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 type AuthenticatedUser = { tenantId: string; userId: string };
 
@@ -21,6 +22,11 @@ export class ReservationsController {
   @Post('verify')
   verify(@Body() body: VerifyReservationDto) {
     return this.reservationsService.verify(body.code, body.phoneLast4);
+  }
+
+  @Patch(':code')
+  update(@Param('code') code: string, @Body() body: UpdateReservationDto) {
+    return this.reservationsService.update(code, body);
   }
 
   @Post(':code/cancel')
