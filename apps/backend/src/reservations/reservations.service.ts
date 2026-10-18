@@ -31,18 +31,32 @@ export class ReservationsService {
       create: { tenantId: outlet.tenantId, name: input.name, phone: input.phone },
     });
     try {
-      return await this.prisma.reservation.create({
-        data: {
-          tenantId: outlet.tenantId,
-          outletId: outlet.id,
-          customerId: customer.id,
-          tableId: availability.tables[0].id,
-          startAt: availability.startAt,
-          endAt: availability.endAt,
-          partySize: input.partySize,
-          code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
-          notes: input.notes,
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${outlet.id}), hashtext(${input.date}))`;
+        const lockedAvailability = await this.availabilityService.find(
+          input.outletId,
+          input.date,
+          input.time,
+          input.partySize,
+          undefined,
+          tx,
+        );
+        if (!lockedAvailability.available || !lockedAvailability.startAt || !lockedAvailability.endAt) {
+          throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot baru saja diambil tamu lain.' });
+        }
+        return tx.reservation.create({
+          data: {
+            tenantId: outlet.tenantId,
+            outletId: outlet.id,
+            customerId: customer.id,
+            tableId: lockedAvailability.tables[0].id,
+            startAt: lockedAvailability.startAt,
+            endAt: lockedAvailability.endAt,
+            partySize: input.partySize,
+            code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
+            notes: input.notes,
+          },
+        });
       });
     } catch (error) {
       if (this.isSlotConflict(error)) {
@@ -291,6 +305,8 @@ export class ReservationsService {
   }
 
   private isSlotConflict(error: unknown) {
-    return typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2010';
+    if (typeof error !== 'object' || error === null) return false;
+    const { code, cause } = error as { code?: string; cause?: { code?: string } };
+    return ['P2010', 'P2034', '23P01', '40P01'].includes(code ?? cause?.code ?? '');
   }
 }
