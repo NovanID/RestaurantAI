@@ -237,13 +237,17 @@ export class AiToolsService {
   }
 
   async updateReservation(tenantId: string, args: any) {
-    const updated = await this.reservationsService.update(args.code, {
-      phoneLast4: args.phoneLast4,
-      date: args.date,
-      time: args.time,
-      partySize: args.partySize ? Number(args.partySize) : undefined,
-      notes: args.notes,
-    });
+    const updated = await this.reservationsService.update(
+      args.code,
+      {
+        phoneLast4: args.phoneLast4,
+        date: args.date,
+        time: args.time,
+        partySize: args.partySize ? Number(args.partySize) : undefined,
+        notes: args.notes,
+      },
+      tenantId,
+    );
 
     return {
       success: true,
@@ -254,7 +258,7 @@ export class AiToolsService {
   }
 
   async cancelReservation(tenantId: string, code: string, phoneLast4: string) {
-    const cancelled = await this.reservationsService.cancel(code, phoneLast4);
+    const cancelled = await this.reservationsService.cancel(code, phoneLast4, undefined, tenantId);
     return {
       success: true,
       code: cancelled.code,

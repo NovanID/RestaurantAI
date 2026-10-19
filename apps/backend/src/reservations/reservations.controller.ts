@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ListReservationsDto } from './dto/list-reservations.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
@@ -7,6 +7,14 @@ import { CreateReservationDto } from './dto/create-reservation.dto';
 import { VerifyReservationDto } from './dto/verify-reservation.dto';
 import { CancelReservationDto } from './dto/cancel-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { createRateLimitInterceptor } from '../common/rate-limit.service';
+
+const VerifyRateLimit = createRateLimitInterceptor({
+  windowMs: 60_000,
+  maxRequests: 10,
+  keyPrefix: 'resv-verify',
+  message: 'Terlalu banyak percobaan verifikasi tiket. Silakan coba lagi setelah 1 menit.',
+});
 
 type AuthenticatedUser = { tenantId: string; userId: string };
 
@@ -20,6 +28,7 @@ export class ReservationsController {
   }
 
   @Post('verify')
+  @UseInterceptors(VerifyRateLimit)
   verify(@Body() body: VerifyReservationDto) {
     return this.reservationsService.verify(body.code, body.phoneLast4);
   }

@@ -52,17 +52,21 @@ export class ReservationsService {
     }
   }
 
-  async verify(code: string, phoneLast4: string) {
+  async verify(code: string, phoneLast4: string, tenantId?: string) {
     const reservation = await this.prisma.reservation.findFirst({
-      where: { code, customer: { phone: { endsWith: phoneLast4 } } },
+      where: {
+        code,
+        customer: { phone: { endsWith: phoneLast4 } },
+        ...(tenantId ? { tenantId } : {}),
+      },
       include: { outlet: true, table: true, customer: true },
     });
     if (!reservation) throw new NotFoundException('Reservasi tidak ditemukan.');
     return reservation;
   }
 
-  async update(code: string, input: UpdateReservationDto) {
-    const reservation = await this.verify(code, input.phoneLast4);
+  async update(code: string, input: UpdateReservationDto, tenantId?: string) {
+    const reservation = await this.verify(code, input.phoneLast4, tenantId);
     if (!['pending', 'confirmed'].includes(reservation.status)) {
       throw new ConflictException('Reservasi tidak dapat diubah.');
     }
@@ -120,8 +124,8 @@ export class ReservationsService {
     }
   }
 
-  async cancel(code: string, phoneLast4: string, actorId?: string) {
-    const reservation = await this.verify(code, phoneLast4);
+  async cancel(code: string, phoneLast4: string, actorId?: string, tenantId?: string) {
+    const reservation = await this.verify(code, phoneLast4, tenantId);
     if (!['pending', 'confirmed'].includes(reservation.status)) {
       throw new ConflictException('Reservasi tidak dapat dibatalkan.');
     }
