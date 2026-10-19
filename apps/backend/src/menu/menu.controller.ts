@@ -57,7 +57,7 @@ export class MenuController {
     };
   }
   
-  @Get('menu') 
+  @Get('menu')
   list(@Query('tenant_id') tenantId: string, @Query('query') query?: string, @Query('category') category?: string) { 
     return this.menuService.list(tenantId, query, category); 
   }

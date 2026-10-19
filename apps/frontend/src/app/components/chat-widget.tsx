@@ -13,7 +13,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
     {
       role: 'assistant',
       content:
-        'Salamaik datang di RM Padang Sederhana! Ambo Rancak AI, siap mambantu Uni dan Uda mangarajoan reservasi meja, cek ketersediaan jam makan, ataupun rekomendasi lauk pangek & rendang hari ko. Ado nan bisa ambo bantu?',
+        'Selamat datang di Rumah Makan Padang Sederhana! Saya asisten AI restoran, siap membantu Anda reservasi meja, cek ketersediaan jam makan, atau rekomendasi menu lezat hari ini. Ada yang bisa dibantu?',
     },
   ]);
   const [input, setInput] = useState('');
@@ -60,15 +60,18 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         throw new Error(json.message || 'Gagal menghubungi asisten AI.');
       }
 
-      if (json.sessionId && !sessionId) {
-        setSessionId(json.sessionId);
+      const replyText = json.data?.reply || json.reply;
+      const returnedSessionId = json.data?.sessionId || json.sessionId;
+
+      if (returnedSessionId && !sessionId) {
+        setSessionId(returnedSessionId);
       }
 
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: json.reply || 'Maaf, ambo balun dapek manjawab itu.',
+          content: replyText || 'Maaf, saya belum dapat menjawab pertanyaan tersebut.',
         },
       ]);
     } catch (err: any) {
@@ -76,7 +79,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         ...prev,
         {
           role: 'assistant',
-          content: 'Maaf, tajadi gangguan koneksi ka server. Silakan hubungi nomor WhatsApp cabang kami.',
+          content: 'Maaf, terjadi gangguan koneksi ke server. Silakan hubungi nomor WhatsApp cabang kami.',
         },
       ]);
     } finally {
@@ -95,7 +98,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
           <div className="w-8 h-8 rounded-full bg-[#16201D] text-[#ECE8AF] flex items-center justify-center font-mono text-xs font-bold border border-[#ECE8AF]/20">
             AI
           </div>
-          <span className="text-sm font-semibold tracking-wide">Tanya Rancak AI</span>
+          <span className="text-sm font-semibold tracking-wide">Tanya Asisten AI</span>
           <span className="flex h-2.5 w-2.5 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4A943E] opacity-75" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#4A943E]" />
@@ -114,10 +117,10 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-[#ECE8AF] flex items-center gap-1.5">
-                  Rancak AI
+                  Asisten AI Restoran
                   <span className="w-2 h-2 rounded-full bg-[#4A943E] inline-block" />
                 </h3>
-                <p className="text-[10px] text-[#ECE8AF]/60 font-mono">Pelayanan Tamu Khas Minang</p>
+                <p className="text-[10px] text-[#ECE8AF]/60 font-mono">Layanan Reservasi & Informasi Menu</p>
               </div>
             </div>
             <button
