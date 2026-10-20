@@ -25,6 +25,7 @@ export class ReservationsService {
       throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot tidak tersedia.' });
     }
     const outlet = await this.prisma.outlet.findUniqueOrThrow({ where: { id: input.outletId } });
+    const expiresAt = new Date(Date.now() + 15 * 60_000);
     const customer = await this.prisma.customer.upsert({
       where: { tenantId_phone: { tenantId: outlet.tenantId, phone: input.phone } },
       update: { name: input.name },
@@ -43,6 +44,7 @@ export class ReservationsService {
           code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
           idempotencyKey: input.idempotencyKey,
           notes: input.notes,
+          expiresAt,
         },
       });
     } catch (error) {
@@ -178,7 +180,13 @@ export class ReservationsService {
 
   async expirePending(now = new Date()) {
     const expired = await this.prisma.reservation.findMany({
-      where: { status: 'pending', expiresAt: { lte: now } },
+      where: {
+        status: 'pending',
+        OR: [
+          { expiresAt: { lte: now } },
+          { startAt: { lte: now } },
+        ],
+      },
       select: { id: true, tenantId: true },
     });
     if (expired.length === 0) return { expired: 0 };
@@ -187,7 +195,14 @@ export class ReservationsService {
     for (const item of expired) {
       await this.prisma.$transaction(async (tx) => {
         const changed = await tx.reservation.updateMany({
-          where: { id: item.id, status: 'pending', expiresAt: { lte: now } },
+          where: {
+            id: item.id,
+            status: 'pending',
+            OR: [
+              { expiresAt: { lte: now } },
+              { startAt: { lte: now } },
+            ],
+          },
           data: { status: 'expired', version: { increment: 1 } },
         });
         if (changed.count !== 1) return;
@@ -218,7 +233,8 @@ export class ReservationsService {
     return { expired: count };
   }
 
-  list(tenantId: string, query: ListReservationsDto) {
+  async list(tenantId: string, query: ListReservationsDto) {
+    await this.expirePending().catch(() => ({ expired: 0 }));
     const search = query.query?.trim();
     return this.prisma.reservation.findMany({
       where: {
@@ -248,6 +264,61 @@ export class ReservationsService {
 
   reject(tenantId: string, actorId: string, id: string, reason?: string) {
     return this.changeStatus(tenantId, actorId, id, 'rejected', reason);
+  }
+
+  complete(tenantId: string, actorId: string, id: string) {
+    return this.changeAttendanceStatus(tenantId, actorId, id, 'completed');
+  }
+
+  markNoShow(tenantId: string, actorId: string, id: string) {
+    return this.changeAttendanceStatus(tenantId, actorId, id, 'no_show');
+  }
+
+  private async changeAttendanceStatus(
+    tenantId: string,
+    actorId: string,
+    id: string,
+    status: 'completed' | 'no_show',
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.findFirst({ where: { id, tenantId } });
+      if (!reservation) throw new NotFoundException('Reservasi tidak ditemukan.');
+      if (reservation.status !== 'confirmed') {
+        throw new ConflictException('Hanya reservasi terkonfirmasi yang dapat ditutup.');
+      }
+
+      const updated = await tx.reservation.updateMany({
+        where: { id, tenantId, status: 'confirmed', version: reservation.version },
+        data: { status, version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new ConflictException('Status reservasi telah berubah.');
+
+      const after = await tx.reservation.findUniqueOrThrow({ where: { id } });
+      await tx.reservationStatusHistory.create({
+        data: {
+          tenantId,
+          reservationId: id,
+          fromStatus: 'confirmed',
+          toStatus: status,
+          actorType: 'staff',
+          actorId,
+          reason: status === 'completed' ? 'Tamu hadir dan reservasi selesai' : 'Tamu tidak hadir',
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId,
+          actorType: 'staff',
+          actorId,
+          action: `reservation.${status}`,
+          entityType: 'reservation',
+          entityId: id,
+          before: { status: 'confirmed' },
+          after: { status },
+        },
+      });
+      return after;
+    });
   }
 
   private async changeStatus(

@@ -129,6 +129,55 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
   });
 
   describe('Chat Session Tenant Guard', () => {
+    it('retries XML-like model output using structured tool calls without exposing markup', async () => {
+      (prisma.chatSession.create as jest.Mock).mockResolvedValue({ id: 'new-session-id' });
+      const executeTool = jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue([
+        { nama: 'Es Teh', harga: 5000 },
+      ] as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({
+          message: {
+            role: 'assistant',
+            content: '<dots_function_call><invoke name="search_menu"><parameter name="query">teh</parameter></invoke></dots_function_call>',
+          },
+        })
+        .mockResolvedValueOnce({
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'tool-1',
+              type: 'function',
+              function: { name: 'search_menu', arguments: '{"query":"teh"}' },
+            }],
+          },
+        })
+        .mockResolvedValueOnce({
+          message: { role: 'assistant', content: 'Kami menyediakan Es Teh seharga Rp5.000.' },
+        });
+
+      const res = await aiChatController.chat(tenantA, { message: 'Minuman yang tersedia apa saja?' } as any);
+
+      expect(executeTool).toHaveBeenCalledWith(tenantA, 'search_menu', { query: 'teh' }, 'new-session-id');
+      expect(res.reply).toBe('Kami menyediakan Es Teh seharga Rp5.000.');
+      expect(res.reply).not.toContain('<dots_function_call>');
+    });
+
+    it('returns a safe message if model keeps emitting tool markup', async () => {
+      (prisma.chatSession.create as jest.Mock).mockResolvedValue({ id: 'new-session-id' });
+      llmClient.chatCompletion.mockResolvedValue({
+        message: {
+          role: 'assistant',
+          content: '<dots_function_call><invoke name="cancel_reservation"></invoke></dots_function_call>',
+        },
+      });
+
+      const res = await aiChatController.chat(tenantA, { message: 'halo' } as any);
+
+      expect(res.reply).not.toContain('<dots_function_call>');
+      expect(res.reply).toContain('belum ada perubahan reservasi');
+    });
+
     it('rejects chat session header if session belongs to another tenant', async () => {
       // Session exists for Tenant A, not Tenant B
       const sessionA = 'a0000000-0000-4000-8000-000000000001';

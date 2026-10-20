@@ -73,4 +73,16 @@ export class ReservationsController {
   ) {
     return this.reservationsService.reject(user.tenantId, user.userId, id, body.reason);
   }
+
+  @Post('admin/:id/complete')
+  @UseGuards(JwtAuthGuard)
+  complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.reservationsService.complete(user.tenantId, user.userId, id);
+  }
+
+  @Post('admin/:id/no-show')
+  @UseGuards(JwtAuthGuard)
+  markNoShow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.reservationsService.markNoShow(user.tenantId, user.userId, id);
+  }
 }

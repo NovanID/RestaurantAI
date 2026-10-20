@@ -63,19 +63,34 @@ export class AiChatController {
 
     // First LLM turn
     const firstResponse = await this.llmClient.chatCompletion(conversation, RESTAURANT_TOOLS);
-    const message = firstResponse.message;
+    let message = firstResponse.message;
+    if (this.hasToolMarkup(message.content)) {
+      const retry = await this.llmClient.chatCompletion([
+        ...conversation,
+        { role: 'system', content: 'Gunakan tool_calls terstruktur untuk mengambil data. Jangan menulis XML atau perintah tool sebagai teks jawaban.' },
+      ], RESTAURANT_TOOLS);
+      message = retry.message;
+    }
 
     // Handle tool call chaining
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      conversation.push(message);
+    const rawToolCalls = message.tool_calls || [];
+
+    if (rawToolCalls && rawToolCalls.length > 0) {
+      conversation.push({
+        ...message,
+        content: message.content ? this.stripXmlToolCalls(message.content) : null,
+        tool_calls: rawToolCalls,
+      });
 
       const maxToolCalls = 5;
-      const toolCallsToExecute = message.tool_calls.slice(0, maxToolCalls);
+      const toolCallsToExecute = rawToolCalls.slice(0, maxToolCalls);
 
       for (const call of toolCallsToExecute) {
         let parsedArgs: Record<string, any> = {};
         try {
-          parsedArgs = JSON.parse(call.function.arguments);
+          parsedArgs = typeof call.function.arguments === 'string'
+            ? JSON.parse(call.function.arguments)
+            : (call.function.arguments || {});
         } catch {
           parsedArgs = {};
         }
@@ -102,12 +117,12 @@ export class AiChatController {
       let finalReply = secondResponse.message.content?.trim();
 
       // Clean up if model still outputs raw tool tags
-      if (finalReply && finalReply.startsWith('<tool_call>')) {
+      if (finalReply && (finalReply.startsWith('<tool_call>') || finalReply.startsWith('<dots_function_call>'))) {
         const thirdResponse = await this.llmClient.chatCompletion([
           ...conversation,
           {
             role: 'system',
-            content: 'Format jawaban di atas menjadi rekomendasi ramah dalam Bahasa Indonesia untuk pelanggan. Jangan memanggil tool lagi.',
+            content: 'Format jawaban di atas menjadi rekomendasi ramah dalam Bahasa Indonesia untuk pelanggan. Jangan memanggil tool lagi dan jangan sertakan tag XML apa pun.',
           },
         ]);
         finalReply = thirdResponse.message.content?.trim();
@@ -115,14 +130,24 @@ export class AiChatController {
 
       return {
         sessionId,
-        reply: finalReply || 'Berikut adalah informasi menu dan reservasi kami. Apakah ada hal lain yang ingin Anda tanyakan?',
+        reply: this.stripXmlToolCalls(finalReply || 'Berikut adalah informasi menu dan reservasi kami. Apakah ada hal lain yang ingin Anda tanyakan?'),
       };
     }
 
     return {
       sessionId,
-      reply: message.content || 'Ada yang bisa kami bantu seputar menu dan reservasi Padang Sederhana?',
+      reply: this.stripXmlToolCalls(message.content || 'Ada yang bisa kami bantu seputar menu dan reservasi Padang Sederhana?'),
     };
+  }
+
+  private hasToolMarkup(text: string | null | undefined): boolean {
+    return /<\/?(?:dots_function_call|tool_call|invoke|parameter)\b/i.test(text || '');
+  }
+
+  private stripXmlToolCalls(text: string): string {
+    return this.hasToolMarkup(text)
+      ? 'Maaf, informasi belum dapat diproses. Silakan coba lagi; belum ada perubahan reservasi yang dikonfirmasi melalui pesan ini.'
+      : text.trim() || 'Maaf, saya belum dapat menjawab pertanyaan tersebut. Silakan coba lagi.';
   }
 
   private static readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

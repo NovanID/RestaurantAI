@@ -70,7 +70,12 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         throw new Error(json.message || 'Gagal menghubungi asisten AI.');
       }
 
-      const replyText = json.data?.reply || json.reply;
+      const rawReplyText = json.data?.reply || json.reply || '';
+      const sanitizedReply = rawReplyText
+        .replace(/<dots_function_call>[\s\S]*?<\/dots_function_call>/gi, '')
+        .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+        .replace(/<\/?[a-z0-9_-]+_call[^>]*>/gi, '')
+        .trim();
       const returnedSessionId = json.data?.sessionId || json.sessionId;
 
       if (returnedSessionId && !sessionId) {
@@ -81,7 +86,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         ...prev,
         {
           role: 'assistant',
-          content: replyText || 'Maaf, saya belum dapat menjawab pertanyaan tersebut.',
+          content: sanitizedReply || 'Maaf, saya belum dapat menjawab pertanyaan tersebut.',
         },
       ]);
     } catch (err: any) {

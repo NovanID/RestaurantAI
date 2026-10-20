@@ -20,12 +20,22 @@ describe('ReservationsService', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('expires overdue pending reservations', async () => {
+  it('expires overdue pending reservations, including records without expiresAt', async () => {
     prisma.reservation.findMany.mockResolvedValue([{ id: 'res-1', tenantId: 'tenant-1' }]);
     (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
 
-    const result = await service.expirePending(new Date());
+    const now = new Date('2026-10-20T12:00:00.000Z');
+    const result = await service.expirePending(now);
     expect(result.expired).toBe(1);
+    expect(prisma.reservation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: 'pending',
+        OR: expect.arrayContaining([
+          { expiresAt: { lte: now } },
+          { startAt: { lte: now } },
+        ]),
+      }),
+    }));
     expect(prisma.reservationStatusHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ fromStatus: 'pending', toStatus: 'expired', actorType: 'system' }),
@@ -56,6 +66,45 @@ describe('ReservationsService', () => {
     await expect(service.approve('tenant-1', 'staff-1', reservation.id)).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+
+  it('marks confirmed reservation as no show and records its history', async () => {
+    prisma.reservation.findFirst.mockResolvedValue({
+      id: 'res-no-show',
+      tenantId: 'tenant-1',
+      status: 'confirmed',
+      version: 1,
+    });
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.reservation as any).findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ id: 'res-no-show', status: 'no_show' });
+
+    await expect(service.markNoShow('tenant-1', 'staff-1', 'res-no-show')).resolves.toMatchObject({
+      status: 'no_show',
+    });
+    expect(prisma.reservationStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fromStatus: 'confirmed', toStatus: 'no_show', actorType: 'staff' }),
+      }),
+    );
+  });
+
+  it('marks confirmed reservation as completed', async () => {
+    prisma.reservation.findFirst.mockResolvedValue({
+      id: 'res-complete',
+      tenantId: 'tenant-1',
+      status: 'confirmed',
+      version: 1,
+    });
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.reservation as any).findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ id: 'res-complete', status: 'completed' });
+
+    await expect(service.complete('tenant-1', 'staff-1', 'res-complete')).resolves.toMatchObject({
+      status: 'completed',
+    });
   });
 
   it('records history and audit data when a customer cancels', async () => {

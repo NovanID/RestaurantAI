@@ -28,6 +28,16 @@ export function getReservationStatusMeta(status: string): {
         label: 'Selesai',
         badgeClass: 'active',
       };
+    case 'no_show':
+      return {
+        label: 'Tidak Hadir',
+        badgeClass: 'cancelled',
+      };
+    case 'expired':
+      return {
+        label: 'Kedaluwarsa',
+        badgeClass: 'neutral',
+      };
     case 'active':
       return {
         label: 'Aktif',
