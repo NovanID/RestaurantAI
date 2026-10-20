@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ResponseInterceptor } from './response.interceptor';
+import { RequestIdInterceptor } from './request-id.interceptor';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
@@ -15,9 +16,14 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
   app.enableCors({
-    origin: '*',
+    origin: allowedOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    exposedHeaders: ['x-request-id'],
     credentials: true,
   });
 
@@ -30,7 +36,7 @@ async function bootstrap() {
       stopAtFirstError: false,      // Show all errors at once
     }),
   );
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalInterceptors(new RequestIdInterceptor(), new ResponseInterceptor());
 
   const port = process.env.PORT || 4000;
   await app.listen(port);

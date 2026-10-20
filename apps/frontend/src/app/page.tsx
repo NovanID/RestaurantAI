@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import CustomerHomeClient, { MenuItem, Outlet } from './customer-home-client';
 
 async function CustomerDataContent() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+  const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
   const tenantId = process.env.PUBLIC_MENU_TENANT_ID || '74523d6c-541a-4607-88a0-ac0df9c15f48';
 
   let menuItems: MenuItem[] = [];

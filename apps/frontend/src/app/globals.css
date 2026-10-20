@@ -53,6 +53,12 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Universal high-contrast visible focus ring for keyboard navigation (WCAG AA 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--ocher-primary) !important;
+  outline-offset: 2px !important;
+}
+
 /* Explicit CSS resets to ensure inputs and borders are crisp and visible */
 input.field-input,
 select.field-input,

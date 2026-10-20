@@ -56,31 +56,31 @@ export default function CustomerHomeClient({
     <div className="min-h-screen bg-[#101614] text-[#ECE8AF] flex flex-col font-sans selection:bg-[#D98327]/30 selection:text-[#ECE8AF]">
       {/* Top Navigation */}
       <header className="border-b border-[#2d2924] bg-[#16201D]/90 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-lg border border-[#D98327]/60 bg-[#D98327]/10 flex items-center justify-center text-[#D98327] font-bold text-base tracking-widest font-mono">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 min-h-16 sm:h-20 py-2 sm:py-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3">
+          <div className="flex items-center space-x-2.5 sm:space-x-3.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg border border-[#D98327]/60 bg-[#D98327]/10 flex items-center justify-center text-[#D98327] font-bold text-sm sm:text-base tracking-widest font-mono">
               RM
             </div>
             <div>
-              <span className="font-bold text-base tracking-wide uppercase text-[#ECE8AF] block">
+              <span className="font-bold text-sm sm:text-base tracking-wide uppercase text-[#ECE8AF] block">
                 Rumah Makan Minang Asli
               </span>
-              <span className="block text-[11px] text-[#4A943E] font-mono tracking-wider font-semibold">
+              <span className="hidden sm:block text-[11px] text-[#4A943E] font-mono tracking-wider font-semibold">
                 CITA RASA PUSAKA PADANG SEJAK 1982
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setIsManageOpen(true)}
-              className="px-3.5 py-2 rounded-lg border border-[#3d332a] bg-[#101614] hover:border-[#D98327] text-xs font-semibold text-[#ECE8AF] tracking-wide transition font-mono"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-[#3d332a] bg-[#101614] hover:border-[#D98327] text-[11px] sm:text-xs font-semibold text-[#ECE8AF] tracking-wide transition font-mono"
             >
               Cek Reservasi
             </button>
             <button
               onClick={() => setIsBookingOpen(true)}
-              className="px-4 py-2 rounded-lg bg-[#D98327] hover:bg-[#BF6F1C] text-black font-semibold text-xs tracking-wider uppercase transition shadow-lg shadow-[#D98327]/20"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-[#D98327] hover:bg-[#BF6F1C] text-black font-semibold text-[11px] sm:text-xs tracking-wider uppercase transition shadow-lg shadow-[#D98327]/20"
             >
               Reservasi Meja
             </button>

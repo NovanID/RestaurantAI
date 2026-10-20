@@ -31,6 +31,16 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
     }
   }, [messages, isOpen, isTyping]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isTyping) return;
@@ -88,12 +98,15 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 font-sans">
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 font-sans max-w-[calc(100vw-2rem)]">
       {/* Floating Button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="group flex items-center gap-3 px-4 py-3 rounded-full bg-[#D98327] hover:bg-[#BF6F1C] text-[#16201D] font-bold shadow-2xl border border-[#ECE8AF]/30 transition-all transform hover:scale-105 active:scale-95"
+          aria-label="Tanya Asisten AI Restoran"
+          aria-haspopup="dialog"
+          aria-expanded={false}
+          className="group flex items-center gap-3 px-4 py-3 rounded-full bg-[#D98327] hover:bg-[#BF6F1C] text-[#16201D] font-bold shadow-2xl border border-[#ECE8AF]/30 transition-all transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[#ECE8AF]"
         >
           <div className="w-8 h-8 rounded-full bg-[#16201D] text-[#ECE8AF] flex items-center justify-center font-mono text-xs font-bold border border-[#ECE8AF]/20">
             AI
@@ -108,7 +121,12 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="w-[360px] sm:w-[400px] h-[520px] rounded-2xl border border-[#3d332a] bg-[#16201D] text-[#ECE8AF] shadow-2xl flex flex-col overflow-hidden animate-fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Jendela Chat Asisten AI Restoran"
+          className="w-[calc(100vw-2rem)] sm:w-[400px] h-[520px] max-h-[calc(100dvh-5rem)] rounded-2xl border border-[#3d332a] bg-[#16201D] text-[#ECE8AF] shadow-2xl flex flex-col overflow-hidden animate-fade-in"
+        >
           {/* Header */}
           <div className="px-4 py-3.5 border-b border-[#2d2924] bg-[#101614] flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -125,7 +143,8 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="w-7 h-7 rounded-full border border-[#3d332a] flex items-center justify-center text-[#ECE8AF]/60 hover:text-[#ECE8AF] hover:border-[#D98327] transition text-xs"
+              aria-label="Tutup jendela chat"
+              className="w-8 h-8 rounded-full border border-[#3d332a] flex items-center justify-center text-[#ECE8AF]/60 hover:text-[#ECE8AF] hover:border-[#D98327] transition text-xs focus-visible:ring-2 focus-visible:ring-[#D98327]"
             >
               ✕
             </button>
@@ -167,6 +186,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
           <form onSubmit={handleSend} className="p-3 border-t border-[#2d2924] bg-[#101614] flex gap-2">
             <input
               type="text"
+              aria-label="Pesan untuk asisten AI"
               placeholder="Tanya menu, cek meja, atau buat booking..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -175,6 +195,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
             <button
               type="submit"
               disabled={isTyping || !input.trim()}
+              aria-label="Kirim pesan"
               className="px-3.5 py-2 rounded-xl bg-[#D98327] hover:bg-[#BF6F1C] text-black font-semibold text-xs transition disabled:opacity-40"
             >
               Kirim

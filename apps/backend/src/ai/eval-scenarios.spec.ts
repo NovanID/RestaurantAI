@@ -231,41 +231,49 @@ describe('AI 30-Scenario Evaluation Suite (PRO-84)', () => {
   // Group 3: Booking Mutations & Idempotency (Skenario 13 - 18)
   describe('Group 3: Mutasi Booking & Idempotensi', () => {
     it('S13: Buat reservasi dengan data valid dan konfirmasi', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'create_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'create_reservation', {
         outletSlug: 'kemang', date: '2026-11-20', time: '19:00', partySize: 4,
         customerName: 'Siti Aminah', customerPhone: '081234567890',
         idempotencyKey: 'idem-13',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.success).toBe(true);
       expect(res.code).toBe('RSV-CREATED-999');
     });
 
     it('S14: Idempotensi tool: mencegah duplicate booking dengan key sama', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'create_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'create_reservation', {
         outletSlug: 'kemang', date: '2026-11-20', time: '19:00', partySize: 4,
         customerName: 'Siti Aminah', customerPhone: '081234567890',
         idempotencyKey: 'idem-14-dup',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.error).toBeDefined();
     });
 
     it('S15: Buat reservasi saat meja penuh menolak dengan pesan jelas', async () => {
       reservationsService.create.mockRejectedValueOnce(new Error('Meja penuh pada jam tersebut'));
-      const res = await aiToolsService.executeTool(tenantId, 'create_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'create_reservation', {
         outletSlug: 'kemang', date: '2026-11-20', time: '19:00', partySize: 4,
         customerName: 'Siti Aminah', customerPhone: '081234567890',
         idempotencyKey: 'idem-15',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.error).toContain('Meja penuh');
     });
 
     it('S16: Buat reservasi dengan catatan khusus (notes)', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'create_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'create_reservation', {
         outletSlug: 'kemang', date: '2026-11-20', time: '19:00', partySize: 2,
         customerName: 'Budi Santoso', customerPhone: '081211112222',
         notes: 'Ulang tahun, minta lilin',
         idempotencyKey: 'idem-16',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.success).toBe(true);
     });
 
@@ -296,38 +304,48 @@ describe('AI 30-Scenario Evaluation Suite (PRO-84)', () => {
     });
 
     it('S20: Batalkan reservasi valid dengan alasan', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'cancel_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'cancel_reservation', {
         code: 'RSV-VALID-01', phoneLast4: '7890', reason: 'Ada urusan keluarga mendadak',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.success).toBe(true);
     });
 
     it('S21: Batalkan reservasi gagal jika verifikasi telepon salah', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'cancel_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'cancel_reservation', {
         code: 'RSV-VALID-01', phoneLast4: '9999',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.error).toBeDefined();
     });
 
     it('S22: Update reservasi valid', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'update_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'update_reservation', {
         code: 'RSV-VALID-01', phoneLast4: '7890', partySize: 3, notes: 'Ganti 3 orang',
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.success).toBe(true);
     });
 
     it('S23: Update reservasi tolak jika lewat batas waktu cutoff', async () => {
       reservationsService.update.mockRejectedValueOnce(new Error('Batas waktu perubahan telah lewat'));
-      const res = await aiToolsService.executeTool(tenantId, 'update_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'update_reservation', {
         code: 'RSV-VALID-01', phoneLast4: '7890', partySize: 3,
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.error).toContain('Batas waktu perubahan telah lewat');
     });
 
     it('S24: Update reservasi gagal jika telepon mismatch', async () => {
-      const res = await aiToolsService.executeTool(tenantId, 'update_reservation', {
+      const proposal = await aiToolsService.executeTool(tenantId, 'update_reservation', {
         code: 'RSV-VALID-01', phoneLast4: '1111', partySize: 3,
       }, 'sess-eval');
+      expect(proposal.confirmationRequired).toBe(true);
+      const res = await aiToolsService.confirmPendingMutation(tenantId, 'sess-eval');
       expect(res.error).toBeDefined();
     });
   });
