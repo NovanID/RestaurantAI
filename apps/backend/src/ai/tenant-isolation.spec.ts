@@ -131,23 +131,24 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
   describe('Chat Session Tenant Guard', () => {
     it('rejects chat session header if session belongs to another tenant', async () => {
       // Session exists for Tenant A, not Tenant B
+      const sessionA = 'a0000000-0000-4000-8000-000000000001';
       (prisma.chatSession.findFirst as jest.Mock).mockImplementation(({ where }) => {
-        if (where.id === 'session-tenant-a' && where.tenantId === tenantA) {
-          return Promise.resolve({ id: 'session-tenant-a', tenantId: tenantA });
+        if (where.id === sessionA && where.tenantId === tenantA) {
+          return Promise.resolve({ id: sessionA, tenantId: tenantA });
         }
         return Promise.resolve(null);
       });
 
       // Request sent to Tenant B with Tenant A's session header
       await expect(
-        aiChatController.chat(tenantB, { message: 'halo' }, 'session-tenant-a'),
+        aiChatController.chat(tenantB, { message: 'halo' } as any, sessionA),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('creates fresh session when header is omitted', async () => {
       (prisma.chatSession.create as jest.Mock).mockResolvedValue({ id: 'new-session-id' });
 
-      const res = await aiChatController.chat(tenantA, { message: 'halo' });
+      const res = await aiChatController.chat(tenantA, { message: 'halo' } as any);
       expect(res.sessionId).toBe('new-session-id');
       expect(prisma.chatSession.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: { tenantId: tenantA } }),

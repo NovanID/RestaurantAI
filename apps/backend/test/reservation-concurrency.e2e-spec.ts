@@ -3,13 +3,18 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { randomBytes } from 'crypto';
 
-describe.skip('Reservation Concurrency (50 requests to 1 slot)', () => {
+const runConcurrencyE2E = process.env.RUN_CONCURRENCY_E2E === 'true';
+
+(runConcurrencyE2E ? describe : describe.skip)('Reservation Concurrency (50 requests to 1 slot)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let tenantId: string;
   let outletId: string;
-  let tableId: string;
-  const targetDate = '2026-11-20';
+  const targetDate = new Date(Date.now() + 15 * 24 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
   const targetTime = '13:00';
 
   beforeAll(async () => {
@@ -23,28 +28,73 @@ describe.skip('Reservation Concurrency (50 requests to 1 slot)', () => {
 
     prisma = app.get(PrismaService);
 
-    // Pick first outlet and table
-    const outlet = await prisma.outlet.findFirstOrThrow({ where: { slug: 'kemang' } });
-    outletId = outlet.id;
-
-    const table = await prisma.restaurantTable.findFirstOrThrow({
-      where: { outletId, status: 'active' },
-    });
-    tableId = table.id;
-
-    // Clean any conflicting reservations for this specific test window
-    await prisma.reservation.deleteMany({
-      where: {
-        outletId,
-        startAt: {
-          gte: new Date(`${targetDate}T10:00:00+07:00`),
-          lte: new Date(`${targetDate}T22:00:00+07:00`),
-        },
+    // Create isolated test tenant with exactly 1 table to guarantee single-slot contention
+    const testSlug = `concurrency-test-${randomBytes(4).toString('hex')}`;
+    const tenant = await prisma.tenant.create({
+      data: {
+        name: 'Concurrency Test Restaurant',
+        slug: testSlug,
       },
     });
+    tenantId = tenant.id;
+
+    const outlet = await prisma.outlet.create({
+      data: {
+        tenantId,
+        name: 'Single Table Outlet',
+        slug: 'single-table',
+        address: 'Test Address',
+        phone: '081200000000',
+        defaultDurationMinutes: 90,
+        minNoticeMinutes: 0,
+        maxAdvanceDays: 60,
+        changeCutoffMinutes: 60,
+        maxPartySize: 4,
+        autoConfirm: false,
+      },
+    });
+    outletId = outlet.id;
+
+    const diningArea = await prisma.diningArea.create({
+      data: {
+        tenantId,
+        outletId,
+        name: 'Main Area',
+      },
+    });
+
+    await prisma.restaurantTable.create({
+      data: {
+        tenantId,
+        outletId,
+        areaId: diningArea.id,
+        tableNumber: 'Table-01',
+        capacity: 4,
+        status: 'active',
+      },
+    });
+
+    // Opening hours 00:00 - 23:59 for all days
+    for (let weekday = 0; weekday <= 6; weekday++) {
+      await prisma.openingHour.create({
+        data: {
+          tenantId,
+          outletId,
+          weekday,
+          openTime: '00:00',
+          closeTime: '23:59',
+          isClosed: false,
+        },
+      });
+    }
   }, 30000);
 
   afterAll(async () => {
+    if (tenantId && prisma) {
+      await prisma.tenant.delete({
+        where: { id: tenantId },
+      });
+    }
     if (app) {
       await app.close();
     }

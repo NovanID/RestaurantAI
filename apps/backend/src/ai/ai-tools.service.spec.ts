@@ -140,12 +140,48 @@ describe('AiToolsService Unit Tests', () => {
             sessionId: 'session-123',
             toolName: 'create_reservation',
             status: 'ok',
+            output: expect.objectContaining({
+              confirmationRequired: true,
+            }),
             input: expect.objectContaining({
               customerPhone: '0812****7890',
             }),
           }),
         }),
       );
+    });
+
+    it('executes mutation once confirmed by customer explicitly', async () => {
+      prisma.outlet.findFirst.mockResolvedValue({ id: 'out-1', name: 'Kemang' });
+      reservationsService.create.mockResolvedValue({
+        code: 'RSV-NEW1',
+        status: 'pending',
+      });
+
+      const args = {
+        outletSlug: 'kemang',
+        date: '2026-11-25',
+        time: '18:00',
+        partySize: 2,
+        customerName: 'Budi',
+        customerPhone: '081234567890',
+        idempotencyKey: 'idem-1',
+      };
+
+      const firstAttempt = await service.executeTool(
+        't-1',
+        'create_reservation',
+        args,
+        'session-123',
+        'msg-456',
+        false,
+      );
+      expect(firstAttempt.confirmationRequired).toBe(true);
+      expect(reservationsService.create).not.toHaveBeenCalled();
+
+      const secondAttempt = await service.confirmPendingMutation('t-1', 'session-123');
+      expect(secondAttempt.success).toBe(true);
+      expect(reservationsService.create).toHaveBeenCalledTimes(1);
     });
   });
 });

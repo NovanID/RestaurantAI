@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 type AvailabilityTable = {
   id: string;
@@ -51,6 +51,16 @@ export default function ReservationBookingModal({
     partySize: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -135,18 +145,24 @@ export default function ReservationBookingModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-xl rounded-xl border border-[#3d332a] bg-[#16201D] text-[#ECE8AF] shadow-2xl p-6 overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="booking-modal-title"
+        className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl border border-[#3d332a] bg-[#16201D] text-[#ECE8AF] shadow-2xl p-6"
+      >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-[#2d2924]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#D98327]" />
-            <h2 className="text-lg font-bold uppercase tracking-wider text-[#ECE8AF]">
+            <h2 id="booking-modal-title" className="text-lg font-bold uppercase tracking-wider text-[#ECE8AF]">
               {bookingSuccess ? 'Tiket Reservasi Terbit' : 'Reservasi Meja Makan'}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full border border-[#3d332a] flex items-center justify-center text-[#ECE8AF]/60 hover:text-[#ECE8AF] hover:border-[#D98327] transition"
+            aria-label="Tutup formulir reservasi"
+            className="w-8 h-8 rounded-full border border-[#3d332a] flex items-center justify-center text-[#ECE8AF]/60 hover:text-[#ECE8AF] hover:border-[#D98327] transition focus-visible:ring-2 focus-visible:ring-[#D98327]"
           >
             ✕
           </button>

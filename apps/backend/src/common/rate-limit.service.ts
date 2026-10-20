@@ -72,7 +72,13 @@ export function createRateLimitInterceptor(config: RateLimitConfig) {
 
     intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
       const req = context.switchToHttp().getRequest();
-      const ip = req.socket?.remoteAddress || req.ip || '127.0.0.1';
+      const forwarded = req.headers?.['x-forwarded-for'];
+      const rawIp = typeof forwarded === 'string'
+        ? forwarded.split(',')[0].trim()
+        : Array.isArray(forwarded)
+          ? forwarded[0]
+          : req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const ip = rawIp || '127.0.0.1';
       const key = `${config.keyPrefix || 'rl'}:ip:${ip}`;
       this.rateLimitService.checkLimit(key, config);
 

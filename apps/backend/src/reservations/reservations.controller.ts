@@ -16,6 +16,13 @@ const VerifyRateLimit = createRateLimitInterceptor({
   message: 'Terlalu banyak percobaan verifikasi tiket. Silakan coba lagi setelah 1 menit.',
 });
 
+const ReservationMutationRateLimit = createRateLimitInterceptor({
+  windowMs: 60_000,
+  maxRequests: 5,
+  keyPrefix: 'resv-mutate',
+  message: 'Terlalu banyak perubahan reservasi. Silakan tunggu 1 menit sebelum mencoba lagi.',
+});
+
 type AuthenticatedUser = { tenantId: string; userId: string };
 
 @Controller('reservations')
@@ -34,11 +41,13 @@ export class ReservationsController {
   }
 
   @Patch(':code')
+  @UseInterceptors(ReservationMutationRateLimit)
   update(@Param('code') code: string, @Body() body: UpdateReservationDto) {
     return this.reservationsService.update(code, body);
   }
 
   @Post(':code/cancel')
+  @UseInterceptors(ReservationMutationRateLimit)
   cancel(@Param('code') code: string, @Body() body: CancelReservationDto) {
     return this.reservationsService.cancel(code, body.phoneLast4);
   }

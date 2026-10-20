@@ -103,7 +103,7 @@ describe('End-to-End Reservation Flow via AI Orchestration (PRO-85)', () => {
     expect(availResult.message).toContain('Meja tersedia untuk 4 orang');
 
     // Step 2: System receives explicit confirmation with idempotency key and invokes create_reservation
-    const bookingResult = await aiToolsService.executeTool(
+    const proposal = await aiToolsService.executeTool(
       tenantId,
       'create_reservation',
       {
@@ -118,6 +118,8 @@ describe('End-to-End Reservation Flow via AI Orchestration (PRO-85)', () => {
       },
       'session-sim-1',
     );
+    expect(proposal.confirmationRequired).toBe(true);
+    const bookingResult = await aiToolsService.confirmPendingMutation(tenantId, 'session-sim-1');
 
     expect(bookingResult.success).toBe(true);
     expect(bookingResult.code).toMatch(/^RSV-/);

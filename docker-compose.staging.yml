@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: restaurant_ai_staging_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-restaurant_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-restaurant_password}
+      POSTGRES_DB: ${POSTGRES_DB:-restaurant_ai_staging}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-restaurant_user} -d ${POSTGRES_DB:-restaurant_ai_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - staging_net
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: restaurant_ai_staging_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-restaurant_user}:${POSTGRES_PASSWORD:-restaurant_password}@postgres:5432/${POSTGRES_DB:-restaurant_ai_staging}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_TOOL_MODEL: ${LLM_TOOL_MODEL:-google/gemini-2.0-flash-001}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-google/gemini-2.0-flash-001}
+    ports:
+      - "4000:4000"
+    volumes:
+      - staging_uploads_data:/app/apps/backend/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    networks:
+      - staging_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    container_name: restaurant_ai_staging_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      INTERNAL_API_URL: http://backend:4000/api/v1
+    ports:
+      - "3000:3000"
+    networks:
+      - staging_net
+
+volumes:
+  staging_postgres_data:
+  staging_uploads_data:
+
+networks:
+  staging_net:
+    driver: bridge

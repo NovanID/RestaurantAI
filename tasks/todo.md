@@ -1,21 +1,14 @@
-# Phase 4: Full AI Integration & Tenant Hardening
+# Phase 5: Joint Hardening & Staging
 
 ## Overview
-Status Linear Project: **In Progress**
-Active Branch: `feat/phase-4-ai-integration-tenant-hardening`
+Status Linear Project: **Completed**
+Active Branch: `feat/phase-5-joint-hardening-staging`
 
-## Issues
-- [x] PRO-87: Guard tenant + tes isolasi dua tenant
-  - Inject tenant_id / outlet_id dari session / server context, cegah parameter spoofing dari LLM
-  - Automated tests: pastikan tenant B tidak bisa akses data tenant A
-- [x] PRO-86: Rate limit chat dan endpoint publik
-  - Throttler limit 20 pesan/menit per session/IP
-  - Batas ukuran pesan dan limit max 5 tool call per LLM turn
-  - Proteksi brute force verification (endpoint verify reservation)
-- [x] PRO-85: Alur chat penuh: outlet → availability → konfirmasi → booking
-  - Multi-turn conversation flow end-to-end
-  - Customer tanya ketersediaan → opsi riil meja → tanya data customer → ringkasan & konfirmasi eksplisit → booking tersimpan di DB
-- [x] PRO-84: Evaluasi AI 30 skenario
-  - Automated evaluation runner untuk 30 test cases
-  - Skenario: happy path, tanggal tutup, meja penuh, prompt injection, pembatalan, validasi nama/telepon
-  - Target kelulusan 100%
+## Issues Tracker (7 Tiket)
+- [x] PRO-83: Tes double booking dan konkurensi final (Verifikasi PostgreSQL nyata: btree_gist exclusion constraint 23P01/40P01 lolos 50 request konkruen)
+- [x] PRO-82: Perbaikan prompt dari hasil evaluasi AI (Server-side two-stage confirmation gate & non-fallthrough failure recovery)
+- [x] PRO-79: Observability minimum (NestJS structured logging, request_id sanitasi PII, latency tracking)
+- [x] PRO-80: Review keamanan (CORS allowlist, JWT secret validation min 32 char, sanitasi input DTO, rate limit login & mutasi)
+- [x] PRO-81: Aksesibilitas dan tes mobile (Keyboard WCAG AA Escape/focus-visible, ARIA dialog, responsive mobile 360px)
+- [x] PRO-78: Deploy staging (Docker Compose staging profile, Dockerfile multi-stage, environment config, health checks)
+- [x] PRO-77: Bug bash (E2E full flow verification, edge case testing, compatibility bugfix query params)

@@ -5,11 +5,7 @@ import { RESTAURANT_TOOLS } from './tools.definition';
 import { SYSTEM_PROMPT } from './prompts';
 import { PrismaService } from '../prisma/prisma.service';
 import { createRateLimitInterceptor } from '../common/rate-limit.service';
-
-export interface ChatMessageRequest {
-  message: string;
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-}
+import { ChatMessageDto } from './dto/chat-message.dto';
 
 const ChatRateLimit = createRateLimitInterceptor({
   windowMs: 60_000,
@@ -30,18 +26,33 @@ export class AiChatController {
   @UseInterceptors(ChatRateLimit)
   async chat(
     @Param('tenantId') tenantId: string,
-    @Body() body: ChatMessageRequest,
+    @Body() body: ChatMessageDto,
     @Headers('x-session-id') sessionIdHeader?: string,
   ) {
-    if (!body?.message || typeof body.message !== 'string') {
-      throw new BadRequestException('Pesan chat wajib diisi.');
-    }
-
-    if (body.message.length > 1000) {
-      throw new BadRequestException('Pesan terlalu panjang (maksimal 1000 karakter).');
-    }
 
     const sessionId = await this.resolveSession(tenantId, sessionIdHeader);
+
+    // Handle rejection or cancellation of pending proposal
+    const explicitRejection = /^\s*(tidak|batal|batalkan|jangan|bukan|tidak jadi|gak jadi|nggak jadi)\b/i.test(body.message);
+    if (explicitRejection) {
+      const cleared = this.aiToolsService.clearPendingMutation(tenantId, sessionId);
+      if (cleared) {
+        return { sessionId, reply: 'Baik, perubahan atau pemesanan telah dibatalkan. Ada hal lain yang bisa saya bantu?' };
+      }
+    }
+
+    // Flexible affirmative confirmation matching
+    const explicitConfirmation = /^\s*(ya|iya|benar|betul|setuju|oke|ok|siap|lanjutkan|sudah sesuai|sesuai|ya benar|iya benar|oke lanjutkan|ya silakan|tolong lanjutkan|silakan proses|proses sekarang)\b/i.test(body.message);
+
+    if (explicitConfirmation) {
+      const confirmed = await this.aiToolsService.confirmPendingMutation(tenantId, sessionId);
+      if (!('error' in confirmed)) {
+        return { sessionId, reply: confirmed.message };
+      }
+      if (confirmed.error !== 'Tidak ada perubahan yang menunggu konfirmasi.') {
+        return { sessionId, reply: `Maaf, konfirmasi tidak dapat diproses: ${confirmed.error}` };
+      }
+    }
 
     // Construct prompt history
     const conversation: any[] = [
@@ -114,8 +125,13 @@ export class AiChatController {
     };
   }
 
+  private static readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   private async resolveSession(tenantId: string, sessionIdHeader?: string): Promise<string> {
     if (sessionIdHeader) {
+      if (!AiChatController.UUID_REGEX.test(sessionIdHeader)) {
+        throw new BadRequestException('Format session ID tidak valid.');
+      }
       const existing = await this.prisma.chatSession.findFirst({
         where: { id: sessionIdHeader, tenantId },
         select: { id: true },

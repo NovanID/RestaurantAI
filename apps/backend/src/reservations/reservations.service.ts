@@ -41,12 +41,19 @@ export class ReservationsService {
           endAt: availability.endAt,
           partySize: input.partySize,
           code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
+          idempotencyKey: input.idempotencyKey,
           notes: input.notes,
         },
       });
     } catch (error) {
       if (this.isSlotConflict(error)) {
         throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot baru saja diambil tamu lain.' });
+      }
+      if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2002') {
+        throw new ConflictException({
+          code: 'DUPLICATE_IDEMPOTENCY_KEY',
+          message: 'Permintaan reservasi duplikat telah diproses sebelumnya.',
+        });
       }
       throw error;
     }
@@ -295,6 +302,19 @@ export class ReservationsService {
   }
 
   private isSlotConflict(error: unknown) {
-    return typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2010';
+    if (typeof error !== 'object' || error === null) return false;
+    const err = error as Record<string, any>;
+    if (err.code === 'P2010') return true;
+    if (typeof err.message === 'string') {
+      if (
+        err.message.includes('23P01') ||
+        err.message.includes('no_overlapping_reservations') ||
+        err.message.includes('40P01') ||
+        err.message.includes('deadlock detected')
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 }
