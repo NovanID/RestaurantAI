@@ -2,7 +2,7 @@ import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
 import { LlmClient } from './llm.client';
 import { AiToolsService } from './ai-tools.service';
 import { RESTAURANT_TOOLS } from './tools.definition';
-import { SYSTEM_PROMPT } from './prompts';
+import { withOutletScope } from './prompts';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface ChatMessageRequest {
@@ -25,10 +25,16 @@ export class AiChatController {
     @Headers('x-session-id') sessionIdHeader?: string,
   ) {
     const sessionId = sessionIdHeader || (await this.getOrCreateSession(tenantId));
+    // shortcut: the earliest active outlet is the chat scope; add an explicit outlet selector when multi-outlet chat is needed.
+    const outlet = await this.prisma.outlet.findFirst({
+      where: { tenantId, isActive: true },
+      select: { name: true, slug: true },
+      orderBy: { createdAt: 'asc' },
+    });
 
     // Construct prompt history
     const conversation: any[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: withOutletScope(outlet || undefined) },
       ...(body.history || []).map((h) => ({ role: h.role, content: h.content })),
       { role: 'user', content: body.message },
     ];
@@ -40,6 +46,7 @@ export class AiChatController {
     // Handle tool call chaining
     if (message.tool_calls && message.tool_calls.length > 0) {
       conversation.push(message);
+      const toolResults: Array<{ name: string; result: unknown }> = [];
 
       for (const call of message.tool_calls) {
         let parsedArgs: Record<string, any> = {};
@@ -49,12 +56,17 @@ export class AiChatController {
           parsedArgs = {};
         }
 
+        if (outlet && ['check_availability', 'create_reservation'].includes(call.function.name)) {
+          parsedArgs.outletSlug ||= outlet.slug;
+        }
+
         const toolResult = await this.aiToolsService.executeTool(
           tenantId,
           call.function.name,
           parsedArgs,
           sessionId,
         );
+        toolResults.push({ name: call.function.name, result: toolResult });
 
         conversation.push({
           role: 'tool',
@@ -65,10 +77,13 @@ export class AiChatController {
       }
 
       // Second turn with tool result to generate natural response
-      const secondResponse = await this.llmClient.chatCompletion(conversation, RESTAURANT_TOOLS);
+      const secondResponse = await this.llmClient.chatCompletion(conversation, RESTAURANT_TOOLS, 'none');
+      const reply = secondResponse.message.content?.trim();
       return {
         sessionId,
-        reply: secondResponse.message.content || 'Terima kasih, ada hal lain yang bisa kami bantu?',
+        reply: reply && !reply.includes('<tool_call>')
+          ? reply
+          : this.fallbackFromTools(toolResults),
       };
     }
 
@@ -84,5 +99,24 @@ export class AiChatController {
       select: { id: true },
     });
     return session.id;
+  }
+
+  private fallbackFromTools(toolResults: Array<{ name: string; result: unknown }>) {
+    const menuResult = toolResults.find((tool) => tool.name === 'search_menu')?.result;
+    if (Array.isArray(menuResult)) {
+      if (menuResult.length === 0) {
+        return 'Maaf, menu yang dicari belum tersedia. Uni/Uda boleh sebutkan lauk atau rasa yang diinginkan.';
+      }
+
+      const items = menuResult.slice(0, 5).map((item: any) =>
+        `- ${item.nama} — Rp${Number(item.harga).toLocaleString('id-ID')}`,
+      );
+      return `Berikut rekomendasi menu yang tersedia:\n${items.join('\n')}\n\nMau yang pedas, gurih, atau yang paling favorit?`;
+    }
+
+    const resultWithMessage = toolResults
+      .map((tool) => tool.result as { message?: string })
+      .find((result) => result?.message);
+    return resultWithMessage?.message || 'Data sudah kami cek. Ada lagi yang ingin Uni/Uda tanyakan?';
   }
 }

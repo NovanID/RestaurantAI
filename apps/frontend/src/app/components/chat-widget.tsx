@@ -55,7 +55,8 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         }),
       });
 
-      const json = await res.json();
+      const payload = await res.json();
+      const json = payload.data ?? payload;
       if (!res.ok) {
         throw new Error(json.message || 'Gagal menghubungi asisten AI.');
       }

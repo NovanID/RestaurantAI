@@ -24,9 +24,9 @@ export class LlmClient {
   private readonly model: string;
 
   constructor() {
-    this.baseUrl = process.env.LLM_BASE_URL || 'http://localhost:8000/v1';
-    this.apiKey = process.env.LLM_API_KEY || 'dev-key';
-    this.model = process.env.LLM_MODEL || 'hermes-3-llama-3.1-8b';
+    this.baseUrl = process.env.LLM_BASE_URL || process.env.OPENROUTER_BASE_URL || 'http://localhost:8000/v1';
+    this.apiKey = process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY || 'dev-key';
+    this.model = process.env.LLM_MODEL || process.env.LLM_DEFAULT_MODEL || 'hermes-3-llama-3.1-8b';
   }
 
   async chatCompletion(
