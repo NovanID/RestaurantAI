@@ -129,6 +129,13 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
   });
 
   describe('Chat Session Tenant Guard', () => {
+    it('rejects programming requests before calling the model', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      const res = await aiChatController.chat(tenantA, { message: 'bisa buatkan code html css dasar?' } as any);
+      expect(res.reply).toContain('hanya dapat membantu seputar informasi menu');
+      expect(llmClient.chatCompletion).not.toHaveBeenCalled();
+    });
+
     it('supplies current Jakarta date across the UTC day boundary', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-10-20T18:15:00Z'));
       try {

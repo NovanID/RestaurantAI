@@ -32,6 +32,13 @@ export class AiChatController {
 
     const sessionId = await this.resolveSession(tenantId, sessionIdHeader);
 
+    if (this.isClearlyOutOfScope(body.message)) {
+      return {
+        sessionId,
+        reply: 'Maaf, saya hanya dapat membantu seputar informasi menu, cabang, dan reservasi meja di Rumah Makan Padang Sederhana. Ada yang bisa saya bantu terkait reservasi atau menu hari ini?',
+      };
+    }
+
     // Handle rejection or cancellation of pending proposal
     const explicitRejection = /^\s*(tidak|batal|batalkan|jangan|bukan|tidak jadi|gak jadi|nggak jadi)\b/i.test(body.message);
     if (explicitRejection) {
@@ -156,6 +163,10 @@ export class AiChatController {
       sessionId,
       reply: this.stripXmlToolCalls(message.content || 'Ada yang bisa kami bantu seputar menu dan reservasi Padang Sederhana?'),
     };
+  }
+
+  private isClearlyOutOfScope(message: string): boolean {
+    return /\b(?:html|css|javascript|typescript|python|java|php|golang|rust|sql|coding|program(?:ming|mer)?|source\s*code|buat(?:kan)?\s+(?:kode|code|script)|skrip)\b/i.test(message);
   }
 
   private hasToolMarkup(text: string | null | undefined): boolean {
