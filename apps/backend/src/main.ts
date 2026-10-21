@@ -4,11 +4,14 @@ import { ValidationPipe } from '@nestjs/common';
 import { ResponseInterceptor } from './response.interceptor';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { requestIdMiddleware } from './request-id.middleware';
+import { RequestLoggingInterceptor } from './request-logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api/v1');
+  app.use(requestIdMiddleware);
 
   // Serve static uploaded media files
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
@@ -30,7 +33,7 @@ async function bootstrap() {
       stopAtFirstError: false,      // Show all errors at once
     }),
   );
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalInterceptors(new RequestLoggingInterceptor(), new ResponseInterceptor());
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
