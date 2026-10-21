@@ -129,6 +129,19 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
   });
 
   describe('Chat Session Tenant Guard', () => {
+    it('supplies current Jakarta date across the UTC day boundary', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-20T18:15:00Z'));
+      try {
+        prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+        await aiChatController.chat(tenantA, { message: 'hari ini jam 16.00 WIB ada slot?' } as any);
+        const prompt = llmClient.chatCompletion.mock.calls[0][0][0].content;
+        expect(prompt).toContain('2026-10-21 01:15');
+        expect(prompt).toContain('Asia/Jakarta');
+        expect(prompt).toContain('jangan minta tanggal kalender lagi');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
     it('retries XML-like model output using structured tool calls without exposing markup', async () => {
       (prisma.chatSession.create as jest.Mock).mockResolvedValue({ id: 'new-session-id' });
       const executeTool = jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue([

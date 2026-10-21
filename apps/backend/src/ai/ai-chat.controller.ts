@@ -54,9 +54,15 @@ export class AiChatController {
       }
     }
 
-    // Construct prompt history
+    // Construct prompt history with reliable current date/time in restaurant timezone.
+    const now = new Date();
+    const currentWib = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(now);
     const conversation: any[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: `${SYSTEM_PROMPT}\n\nWAKTU SAAT INI (Asia/Jakarta, WIB): ${currentWib}. "Hari ini" berarti tanggal WIB tersebut; "besok" berarti hari berikutnya dalam WIB. Jika tamu sudah menyebut "hari ini", jangan minta tanggal kalender lagi. Jangan mengarang slot kosong; tanyakan hanya cabang dan jumlah tamu yang belum diketahui sebelum memanggil check_availability.` },
       ...(body.history || []).map((h) => ({ role: h.role, content: h.content })),
       { role: 'user', content: body.message },
     ];
