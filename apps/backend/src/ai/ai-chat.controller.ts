@@ -70,16 +70,20 @@ export class AiChatController {
     // First LLM turn
     const firstResponse = await this.llmClient.chatCompletion(conversation, RESTAURANT_TOOLS);
     let message = firstResponse.message;
-    if (this.hasToolMarkup(message.content)) {
-      const retry = await this.llmClient.chatCompletion([
-        ...conversation,
-        { role: 'system', content: 'Gunakan tool_calls terstruktur untuk mengambil data. Jangan menulis XML atau perintah tool sebagai teks jawaban.' },
-      ], RESTAURANT_TOOLS);
-      message = retry.message;
+    let rawToolCalls = message.tool_calls || [];
+    if (!rawToolCalls.length && this.hasToolMarkup(message.content)) {
+      rawToolCalls = this.parseReadOnlyMarkup(message.content, body.message);
+      if (!rawToolCalls.length) {
+        const retry = await this.llmClient.chatCompletion([
+          ...conversation,
+          { role: 'system', content: 'Gunakan tool_calls terstruktur untuk mengambil data. Jangan menulis perintah tool sebagai teks jawaban.' },
+        ], RESTAURANT_TOOLS);
+        message = retry.message;
+        rawToolCalls = message.tool_calls || [];
+      }
     }
 
     // Handle tool call chaining
-    const rawToolCalls = message.tool_calls || [];
 
     if (rawToolCalls && rawToolCalls.length > 0) {
       conversation.push({
@@ -147,7 +151,46 @@ export class AiChatController {
   }
 
   private hasToolMarkup(text: string | null | undefined): boolean {
-    return /<\/?(?:dots_function_call|tool_call|invoke|parameter)\b/i.test(text || '');
+    return /<\/?(?:dots_function_call|tool_call|invoke|parameter)\b|<\|tool_call_(?:start|end)\|>/i.test(text || '');
+  }
+
+  private parseReadOnlyMarkup(content: string | null, userMessage: string): any[] {
+    const block = content?.match(/^\s*<\|tool_call_start\|>\s*\[([\s\S]*?)\]\s*<\|tool_call_end\|>\s*$/i);
+    if (!block) return [];
+    const calls: any[] = [];
+    const pattern = /(search_menu|check_availability)\s*\(([^()]*)\)/gi;
+    let match: RegExpExecArray | null;
+    let remainder = block[1];
+    while ((match = pattern.exec(block[1])) !== null && calls.length < 5) {
+      remainder = remainder.replace(match[0], '');
+      const args: Record<string, string | number> = {};
+      const argPattern = /([a-zA-Z]+)\s*=\s*(['"])([^'"\r\n]*)\2/g;
+      let argMatch: RegExpExecArray | null;
+      let argRemainder = match[2];
+      while ((argMatch = argPattern.exec(match[2])) !== null) {
+        if (Object.hasOwn(args, argMatch[1])) return [];
+        args[argMatch[1]] = argMatch[3];
+        argRemainder = argRemainder.replace(argMatch[0], '');
+      }
+      if (argRemainder.replace(/[\s,]/g, '')) return [];
+      if (match[1].toLowerCase() === 'check_availability') {
+        const partySize = args.partySize ?? userMessage.match(/\b(?:untuk\s+)?(\d{1,2})\s*orang\b/i)?.[1];
+        if (!partySize || !/^\d{1,2}$/.test(String(partySize)) || Number(partySize) < 1 || Number(partySize) > 12 ||
+          typeof args.outletSlug !== 'string' || !/^[a-z0-9-]+$/i.test(args.outletSlug) ||
+          typeof args.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.date) ||
+          !Number.isFinite(Date.parse(`${args.date}T00:00:00Z`)) ||
+          new Date(`${args.date}T00:00:00Z`).toISOString().slice(0, 10) !== args.date ||
+          typeof args.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(args.time) ||
+          Object.keys(args).some((key) => !['outletSlug', 'date', 'time', 'partySize'].includes(key))) return [];
+        args.partySize = Number(partySize);
+      } else if (Object.keys(args).some((key) => !['query', 'category'].includes(key))) return [];
+      calls.push({
+        id: `read_${calls.length}`,
+        type: 'function',
+        function: { name: match[1].toLowerCase(), arguments: JSON.stringify(args) },
+      });
+    }
+    return calls.length && !remainder.replace(/[\s,]/g, '') ? calls : [];
   }
 
   private stripXmlToolCalls(text: string): string {
