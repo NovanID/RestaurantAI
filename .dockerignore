@@ -1,11 +1,2 @@
 node_modules
-apps/*/node_modules
-apps/*/.next
-apps/*/dist
-.git
-.github
-Documentation
-coverage
-.env*
-*.log
 npm-debug.log*
