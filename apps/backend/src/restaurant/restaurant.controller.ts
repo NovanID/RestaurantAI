@@ -15,6 +15,11 @@ export class RestaurantController {
     return this.restaurantService.outlets(tenantId); 
   }
 
+  @Get('outlets/:id/opening-hours')
+  publicOpeningHours(@Param('id') id: string) {
+    return this.restaurantService.openingHours(undefined, id);
+  }
+
   @Get('admin/outlets') 
   @UseGuards(JwtAuthGuard)
   adminOutlets(@CurrentUser() user: User) { 

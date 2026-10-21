@@ -20,9 +20,25 @@ describe('ReservationsService', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  it('expires overdue pending reservations', async () => {
+    prisma.reservation.findMany.mockResolvedValue([{ id: 'res-1', tenantId: 'tenant-1' }]);
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+
+    const result = await service.expirePending(new Date());
+    expect(result.expired).toBe(1);
+    expect(prisma.reservationStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fromStatus: 'pending', toStatus: 'expired', actorType: 'system' }),
+      }),
+    );
+  });
+
   it('confirms a pending reservation and records its history', async () => {
     prisma.reservation.findFirst.mockResolvedValue(reservation);
-    prisma.reservation.update.mockResolvedValue({ ...reservation, status: 'confirmed' });
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.reservation as any).findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ ...reservation, status: 'confirmed' });
 
     await expect(service.approve('tenant-1', 'staff-1', reservation.id)).resolves.toMatchObject({
       status: 'confirmed',
@@ -48,7 +64,10 @@ describe('ReservationsService', () => {
       tenantId: 'tenant-1',
       customerId: 'customer-1',
     });
-    prisma.reservation.update.mockResolvedValue({ ...reservation, status: 'cancelled' });
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.reservation as any).findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ ...reservation, status: 'cancelled' });
 
     await expect(service.cancel('RSV-123', '1234')).resolves.toMatchObject({ status: 'cancelled' });
     expect(prisma.reservationStatusHistory.create).toHaveBeenCalledWith(
@@ -59,5 +78,68 @@ describe('ReservationsService', () => {
     expect(prisma.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'reservation.cancelled' }) }),
     );
+  });
+
+  it('updates reservation details within cutoff window and records history & audit', async () => {
+    const futureDate = new Date(Date.now() + 24 * 60 * 60_000);
+    const existing = {
+      id: 'res-update-1',
+      tenantId: 'tenant-1',
+      customerId: 'cust-1',
+      outletId: 'outlet-1',
+      version: 1,
+      partySize: 2,
+      status: 'pending',
+      startAt: futureDate,
+      outlet: { changeCutoffMinutes: 120 },
+      table: { tableNumber: 'T1' },
+      customer: { name: 'Budi', phone: '081234567890' },
+    };
+
+    prisma.reservation.findFirst.mockResolvedValue(existing);
+    (service as any).availabilityService.find = jest.fn().mockResolvedValue({
+      available: true,
+      tables: [{ id: 'tbl-new' }],
+      startAt: new Date(futureDate.getTime() + 60 * 60_000),
+      endAt: new Date(futureDate.getTime() + 150 * 60_000),
+    });
+    (prisma.reservation as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.reservation as any).findUniqueOrThrow = jest.fn().mockResolvedValue({
+      ...existing,
+      partySize: 4,
+      version: 2,
+    });
+
+    const updated = await service.update('RSV-XYZ', {
+      phoneLast4: '7890',
+      partySize: 4,
+    });
+
+    expect(updated.partySize).toBe(4);
+    expect(prisma.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'reservation.updated',
+          entityId: 'res-update-1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects reservation update when cutoff time has passed', async () => {
+    const pastCutoff = new Date(Date.now() + 30 * 60_000); // Only 30 mins before, but cutoff is 120 mins
+    const existing = {
+      id: 'res-update-2',
+      status: 'pending',
+      startAt: pastCutoff,
+      outlet: { changeCutoffMinutes: 120 },
+      customer: { phone: '081234567890' },
+    };
+
+    prisma.reservation.findFirst.mockResolvedValue(existing);
+
+    await expect(
+      service.update('RSV-XYZ', { phoneLast4: '7890', partySize: 3 }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

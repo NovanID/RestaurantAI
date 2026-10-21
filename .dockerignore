@@ -1,15 +1,2 @@
 node_modules
-**/node_modules
-.next
-**/.next
-dist
-**/dist
-coverage
-.git
-.env
-.env.*
-**/.env
-**/.env.*
-apps/backend/uploads
-logs
 npm-debug.log*
