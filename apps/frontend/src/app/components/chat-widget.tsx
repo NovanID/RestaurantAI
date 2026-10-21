@@ -52,6 +52,9 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
     setIsTyping(true);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45_000);
+
     try {
       const res = await fetch(`${apiUrl}/ai/chat/${encodeURIComponent(tenantId)}`, {
         method: 'POST',
@@ -63,11 +66,14 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
           message: userText,
           history: messages.slice(1).map((m) => ({ role: m.role, content: m.content })),
         }),
+        signal: controller.signal,
       });
 
-      const json = await res.json();
+      clearTimeout(timeoutId);
+
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json.message || 'Gagal menghubungi asisten AI.');
+        throw new Error(json.message || `Server error (${res.status})`);
       }
 
       const rawReplyText = json.data?.reply || json.reply || '';
@@ -90,11 +96,21 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         },
       ]);
     } catch (err: any) {
+      clearTimeout(timeoutId);
+      console.error('Chat error:', err);
+      const isTimeout = err?.name === 'AbortError';
+      const isRateLimited = err?.message?.includes('429') || err?.message?.includes('Batas');
+      const fallbackText = isRateLimited
+        ? 'Batas pesan chat tercapai. Silakan tunggu 1 menit lalu coba kembali.'
+        : isTimeout
+          ? 'Koneksi ke asisten AI membutuhkan waktu lebih lama dari biasanya. Silakan coba kirim ulang pesan Anda.'
+          : 'Maaf, terjadi gangguan koneksi ke server. Silakan hubungi nomor WhatsApp cabang kami.';
+
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'Maaf, terjadi gangguan koneksi ke server. Silakan hubungi nomor WhatsApp cabang kami.',
+          content: fallbackText,
         },
       ]);
     } finally {

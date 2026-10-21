@@ -14,7 +14,10 @@ import { MenuModule } from './menu/menu.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', 'apps/backend/.env'],
+    }),
     CommonModule,
     PrismaModule,
     AuthModule,

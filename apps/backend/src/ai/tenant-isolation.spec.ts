@@ -129,6 +129,13 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
   });
 
   describe('Chat Session Tenant Guard', () => {
+    it('rejects programming requests before calling the model', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      const res = await aiChatController.chat(tenantA, { message: 'bisa buatkan code html css dasar?' } as any);
+      expect(res.reply).toContain('hanya dapat membantu seputar informasi menu');
+      expect(llmClient.chatCompletion).not.toHaveBeenCalled();
+    });
+
     it('supplies current Jakarta date across the UTC day boundary', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-10-20T18:15:00Z'));
       try {
@@ -174,6 +181,92 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
       expect(executeTool).toHaveBeenCalledWith(tenantA, 'search_menu', { query: 'teh' }, 'new-session-id');
       expect(res.reply).toBe('Kami menyediakan Es Teh seharga Rp5.000.');
       expect(res.reply).not.toContain('<dots_function_call>');
+    });
+
+    it('executes multiple read-only calls from free-model markup without leaking tags', async () => {
+      (prisma.chatSession.create as jest.Mock).mockResolvedValue({ id: 'new-session-id' });
+      const executeTool = jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue({ available: true } as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({
+          message: {
+            role: 'assistant',
+            content: '<|tool_call_start|>\n[check_availability(outletSlug="kemang", date="2026-10-21", time="18:00"), check_availability(outletSlug="tebet", date="2026-10-21", time="18:00")]\n<|tool_call_end|>',
+          },
+        })
+        .mockResolvedValueOnce({
+          message: { role: 'assistant', content: 'Saya sudah mengecek ketersediaan kedua cabang.' },
+        });
+
+      const res = await aiChatController.chat(tenantA, {
+        message: 'untuk 5 orang',
+        history: [{ role: 'user', content: 'untuk hari ini jam 18.00 WIB ada slot?' }],
+      } as any);
+
+      expect(executeTool).toHaveBeenNthCalledWith(1, tenantA, 'check_availability', {
+        outletSlug: 'kemang', date: '2026-10-21', time: '18:00', partySize: 5,
+      }, 'new-session-id');
+      expect(executeTool).toHaveBeenNthCalledWith(2, tenantA, 'check_availability', {
+        outletSlug: 'tebet', date: '2026-10-21', time: '18:00', partySize: 5,
+      }, 'new-session-id');
+      expect(res.reply).toBe('Saya sudah mengecek ketersediaan kedua cabang.');
+      expect(res.reply).not.toContain('tool_call');
+    });
+
+    it('uses tool results when formatter turn returns raw tool markup for menu', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue([
+        { nama: 'Es Teh', harga: 5000 },
+      ] as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant',
+          content: '<|tool_call_start|>[search_menu(category="Minuman")]<|tool_call_end|>',
+        } })
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant', content: '<|tool_call_start|>[search_menu(category="Minuman")]<|tool_call_end|>',
+        } });
+
+      const res = await aiChatController.chat(tenantA, { message: 'minuman apa saja?' } as any);
+
+      expect(res.reply).toContain('Es Teh');
+      expect(res.reply).not.toContain('tool_call');
+    });
+
+    it('uses tool results when formatter turn returns raw tool markup', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue({
+        available: false, outlet: 'Kemang', message: 'Seluruh meja penuh.',
+      } as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant',
+          content: '<|tool_call_start|>[check_availability(outletSlug="kemang", date="2026-10-21", time="18:00", partySize=4)]<|tool_call_end|>',
+        } })
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant', content: '<|tool_call_start|>[check_availability(outletSlug="kemang")]<|tool_call_end|>',
+        } });
+
+      const res = await aiChatController.chat(tenantA, { message: 'kalau untuk 4 orang?' } as any);
+
+      expect(res.reply).toContain('Kemang: tidak tersedia');
+      expect(res.reply).not.toContain('tool_call');
+    });
+
+    it.each([
+      'cancel_reservation(code="RSV-123")',
+      'check_availability(outletSlug="kemang", date="2026-10-21", time="18:00")',
+      'check_availability(outletSlug="kemang", date="2026-02-31", time="18:00", partySize="5")',
+      'check_availability(outletSlug="kemang", date="2026-10-21", time="18:00", partySize="13")',
+      'search_menu(tags="pedas")',
+    ])('rejects unsafe or incomplete markup: %s', async (call) => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      const executeTool = jest.spyOn(aiToolsService, 'executeTool');
+      llmClient.chatCompletion.mockResolvedValue({ message: {
+        role: 'assistant', content: `<|tool_call_start|>[${call}]<|tool_call_end|>`,
+      } });
+      const res = await aiChatController.chat(tenantA, { message: 'cek meja' } as any);
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(res.reply).not.toContain('tool_call');
     });
 
     it('returns a safe message if model keeps emitting tool markup', async () => {
