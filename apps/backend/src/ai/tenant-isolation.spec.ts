@@ -205,6 +205,46 @@ describe('Multi-Tenant Isolation & Guard Tests (PRO-87)', () => {
       expect(res.reply).not.toContain('tool_call');
     });
 
+    it('uses tool results when formatter turn returns raw tool markup for menu', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue([
+        { nama: 'Es Teh', harga: 5000 },
+      ] as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant',
+          content: '<|tool_call_start|>[search_menu(category="Minuman")]<|tool_call_end|>',
+        } })
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant', content: '<|tool_call_start|>[search_menu(category="Minuman")]<|tool_call_end|>',
+        } });
+
+      const res = await aiChatController.chat(tenantA, { message: 'minuman apa saja?' } as any);
+
+      expect(res.reply).toContain('Es Teh');
+      expect(res.reply).not.toContain('tool_call');
+    });
+
+    it('uses tool results when formatter turn returns raw tool markup', async () => {
+      prisma.chatSession.create.mockResolvedValue({ id: 'new-session-id' });
+      jest.spyOn(aiToolsService, 'executeTool').mockResolvedValue({
+        available: false, outlet: 'Kemang', message: 'Seluruh meja penuh.',
+      } as any);
+      llmClient.chatCompletion
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant',
+          content: '<|tool_call_start|>[check_availability(outletSlug="kemang", date="2026-10-21", time="18:00", partySize=4)]<|tool_call_end|>',
+        } })
+        .mockResolvedValueOnce({ message: {
+          role: 'assistant', content: '<|tool_call_start|>[check_availability(outletSlug="kemang")]<|tool_call_end|>',
+        } });
+
+      const res = await aiChatController.chat(tenantA, { message: 'kalau untuk 4 orang?' } as any);
+
+      expect(res.reply).toContain('Kemang: tidak tersedia');
+      expect(res.reply).not.toContain('tool_call');
+    });
+
     it.each([
       'cancel_reservation(code="RSV-123")',
       'check_availability(outletSlug="kemang", date="2026-10-21", time="18:00")',
