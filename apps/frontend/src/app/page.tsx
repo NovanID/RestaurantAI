@@ -3,12 +3,29 @@ import CustomerHomeClient, { MenuItem, Outlet } from './customer-home-client';
 
 async function CustomerDataContent() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-  const tenantId = process.env.PUBLIC_MENU_TENANT_ID || '74523d6c-541a-4607-88a0-ac0df9c15f48';
+  const tenantSlug = process.env.NEXT_PUBLIC_TENANT_SLUG || 'padang-sederhana';
 
   let menuItems: MenuItem[] = [];
   let outlets: Outlet[] = [];
+  let tenantId = '';
 
   try {
+    const tenantRes = await fetch(`${apiUrl}/tenant?slug=${encodeURIComponent(tenantSlug)}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!tenantRes.ok) {
+      throw new Error('Tenant tidak ditemukan');
+    }
+
+    const tenantPayload = await tenantRes.json();
+    tenantId = tenantPayload.data?.id;
+
+    if (!tenantId) {
+      throw new Error('Respons tenant tidak valid');
+    }
+
     const [menuRes, outletsRes] = await Promise.all([
       fetch(`${apiUrl}/menu?tenant_id=${encodeURIComponent(tenantId)}`, {
         cache: 'no-store',

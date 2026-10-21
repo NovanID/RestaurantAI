@@ -7,6 +7,7 @@ describe('ReservationsService Concurrency Simulation (50 requests to 1 slot)', (
 
     const mockPrisma = {
       $transaction: jest.fn(async (callback) => callback(mockPrisma)),
+      $executeRaw: jest.fn(),
       outlet: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           id: 'outlet-1',

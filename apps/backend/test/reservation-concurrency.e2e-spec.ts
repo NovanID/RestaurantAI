@@ -4,11 +4,11 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-describe.skip('Reservation Concurrency (50 requests to 1 slot)', () => {
+describe('Reservation Concurrency (50 requests to 1 slot)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let tenantId: string;
   let outletId: string;
-  let tableId: string;
   const targetDate = '2026-11-20';
   const targetTime = '13:00';
 
@@ -23,28 +23,44 @@ describe.skip('Reservation Concurrency (50 requests to 1 slot)', () => {
 
     prisma = app.get(PrismaService);
 
-    // Pick first outlet and table
-    const outlet = await prisma.outlet.findFirstOrThrow({ where: { slug: 'kemang' } });
+    const runId = Date.now().toString(36);
+    const tenant = await prisma.tenant.create({
+      data: { name: `Concurrency Test ${runId}`, slug: `concurrency-test-${runId}` },
+    });
+    tenantId = tenant.id;
+    const outlet = await prisma.outlet.create({
+      data: {
+        tenantId,
+        name: 'Concurrency Test Outlet',
+        slug: `concurrency-outlet-${runId}`,
+        minNoticeMinutes: 0,
+      },
+    });
     outletId = outlet.id;
 
-    const table = await prisma.restaurantTable.findFirstOrThrow({
-      where: { outletId, status: 'active' },
-    });
-    tableId = table.id;
-
-    // Clean any conflicting reservations for this specific test window
-    await prisma.reservation.deleteMany({
-      where: {
+    await prisma.openingHour.createMany({
+      data: Array.from({ length: 7 }, (_, weekday) => ({
+        tenantId,
         outletId,
-        startAt: {
-          gte: new Date(`${targetDate}T10:00:00+07:00`),
-          lte: new Date(`${targetDate}T22:00:00+07:00`),
-        },
+        weekday,
+        openTime: '09:00',
+        closeTime: '22:00',
+      })),
+    });
+    await prisma.restaurantTable.create({
+      data: {
+        tenantId,
+        outletId,
+        tableNumber: 'CONCURRENCY-1',
+        capacity: 4,
       },
     });
   }, 30000);
 
   afterAll(async () => {
+    if (tenantId) {
+      await prisma.tenant.delete({ where: { id: tenantId } });
+    }
     if (app) {
       await app.close();
     }
@@ -81,11 +97,13 @@ describe.skip('Reservation Concurrency (50 requests to 1 slot)', () => {
     expect(createdRecord).toHaveProperty('code');
     expect(createdRecord.code).toMatch(/^RSV-/);
 
-    // Verify DB count
     const dbCount = await prisma.reservation.count({
       where: {
+        tenantId,
         outletId,
-        startAt: new Date(`${targetDate}T${targetTime}:00+07:00`),
+        startAt: {
+          equals: new Date(`${targetDate}T${targetTime}:00+07:00`),
+        },
         status: { in: ['pending', 'confirmed'] },
       },
     });
