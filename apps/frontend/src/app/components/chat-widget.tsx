@@ -19,6 +19,12 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isQuickBookingOpen, setIsQuickBookingOpen] = useState(false);
+  const [quickDate, setQuickDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [quickTime, setQuickTime] = useState('19:00');
+  const [quickPartySize, setQuickPartySize] = useState(2);
+  const [quickName, setQuickName] = useState('');
+  const [quickPhone, setQuickPhone] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -31,21 +37,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
     }
   }, [messages, isOpen, isTyping]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isTyping) return;
-
-    const userText = input.trim();
     setInput('');
     const newHistory = [...messages, { role: 'user' as const, content: userText }];
     setMessages(newHistory);
@@ -69,9 +61,7 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
-      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.message || `Server error (${res.status})`);
       }
@@ -116,6 +106,19 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleSend = (e: React.FormEvent) => {
+    e.preventDefault();
+    void sendMessage(input.trim());
+  };
+
+  const submitQuickBooking = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsQuickBookingOpen(false);
+    void sendMessage(
+      `Saya ingin reservasi ${quickPartySize} orang pada ${quickDate} pukul ${quickTime}. Nama ${quickName}, nomor telepon ${quickPhone}.`,
+    );
   };
 
   return (
@@ -203,6 +206,19 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
             <div ref={messagesEndRef} />
           </div>
 
+          {isQuickBookingOpen && (
+            <form onSubmit={submitQuickBooking} className="border-t border-[#2d2924] bg-[#101614] p-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input aria-label="Tanggal reservasi" type="date" value={quickDate} onChange={(e) => setQuickDate(e.target.value)} required className="rounded bg-[#16201D] border border-[#3d332a] px-2 py-1.5 text-xs text-[#ECE8AF]" />
+                <input aria-label="Jam reservasi" type="time" value={quickTime} onChange={(e) => setQuickTime(e.target.value)} required className="rounded bg-[#16201D] border border-[#3d332a] px-2 py-1.5 text-xs text-[#ECE8AF]" />
+                <input aria-label="Jumlah tamu" type="number" min={1} max={12} value={quickPartySize} onChange={(e) => setQuickPartySize(Number(e.target.value))} required className="rounded bg-[#16201D] border border-[#3d332a] px-2 py-1.5 text-xs text-[#ECE8AF]" />
+                <input aria-label="Nama pemesan" placeholder="Nama pemesan" value={quickName} onChange={(e) => setQuickName(e.target.value)} required className="rounded bg-[#16201D] border border-[#3d332a] px-2 py-1.5 text-xs text-[#ECE8AF]" />
+              </div>
+              <input aria-label="Nomor telepon" type="tel" placeholder="Nomor WhatsApp" value={quickPhone} onChange={(e) => setQuickPhone(e.target.value)} required className="w-full rounded bg-[#16201D] border border-[#3d332a] px-2 py-1.5 text-xs text-[#ECE8AF]" />
+              <button type="submit" disabled={isTyping} className="w-full rounded bg-[#D98327] py-2 text-xs font-semibold text-black disabled:opacity-40">Lanjut cek meja</button>
+            </form>
+          )}
+
           {/* Input Box */}
           <form onSubmit={handleSend} className="p-3 border-t border-[#2d2924] bg-[#101614] flex gap-2">
             <input
@@ -213,6 +229,14 @@ export default function ChatWidget({ tenantId }: { tenantId: string }) {
               onChange={(e) => setInput(e.target.value)}
               className="flex-1 rounded-xl bg-[#16201D] border border-[#3d332a] px-3.5 py-2 text-xs text-[#ECE8AF] placeholder-[#ECE8AF]/40 focus:border-[#D98327] focus:outline-none"
             />
+            <button
+              type="button"
+              onClick={() => setIsQuickBookingOpen((open) => !open)}
+              className="rounded-xl border border-[#D98327] px-2 text-[#D98327] text-xs"
+              aria-label="Buka booking cepat"
+            >
+              Pesan cepat
+            </button>
             <button
               type="submit"
               disabled={isTyping || !input.trim()}

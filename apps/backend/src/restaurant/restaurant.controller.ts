@@ -15,6 +15,11 @@ export class RestaurantController {
     return this.restaurantService.outlets(tenantId); 
   }
 
+  @Get('tenant')
+  tenant(@Query('slug') slug: string) {
+    return this.restaurantService.tenantBySlug(slug);
+  }
+
   @Get('outlets/:id/opening-hours')
   publicOpeningHours(@Param('id') id: string) {
     return this.restaurantService.openingHours(undefined, id);

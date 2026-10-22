@@ -5,16 +5,12 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { randomBytes } from 'crypto';
 
-const runConcurrencyE2E = process.env.RUN_CONCURRENCY_E2E === 'true';
 
-(runConcurrencyE2E ? describe : describe.skip)('Reservation Concurrency (50 requests to 1 slot)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantId: string;
   let outletId: string;
-  const targetDate = new Date(Date.now() + 15 * 24 * 60 * 60_000)
-    .toISOString()
-    .slice(0, 10);
+
   const targetTime = '13:00';
 
   beforeAll(async () => {
@@ -28,49 +24,17 @@ const runConcurrencyE2E = process.env.RUN_CONCURRENCY_E2E === 'true';
 
     prisma = app.get(PrismaService);
 
-    // Create isolated test tenant with exactly 1 table to guarantee single-slot contention
-    const testSlug = `concurrency-test-${randomBytes(4).toString('hex')}`;
-    const tenant = await prisma.tenant.create({
-      data: {
-        name: 'Concurrency Test Restaurant',
-        slug: testSlug,
-      },
-    });
-    tenantId = tenant.id;
 
-    const outlet = await prisma.outlet.create({
-      data: {
-        tenantId,
-        name: 'Single Table Outlet',
-        slug: 'single-table',
-        address: 'Test Address',
-        phone: '081200000000',
-        defaultDurationMinutes: 90,
-        minNoticeMinutes: 0,
-        maxAdvanceDays: 60,
-        changeCutoffMinutes: 60,
-        maxPartySize: 4,
-        autoConfirm: false,
       },
     });
     outletId = outlet.id;
 
-    const diningArea = await prisma.diningArea.create({
-      data: {
-        tenantId,
-        outletId,
-        name: 'Main Area',
-      },
-    });
 
     await prisma.restaurantTable.create({
       data: {
         tenantId,
         outletId,
-        areaId: diningArea.id,
-        tableNumber: 'Table-01',
-        capacity: 4,
-        status: 'active',
+
       },
     });
 
@@ -90,10 +54,7 @@ const runConcurrencyE2E = process.env.RUN_CONCURRENCY_E2E === 'true';
   }, 30000);
 
   afterAll(async () => {
-    if (tenantId && prisma) {
-      await prisma.tenant.delete({
-        where: { id: tenantId },
-      });
+
     }
     if (app) {
       await app.close();
@@ -131,11 +92,13 @@ const runConcurrencyE2E = process.env.RUN_CONCURRENCY_E2E === 'true';
     expect(createdRecord).toHaveProperty('code');
     expect(createdRecord.code).toMatch(/^RSV-/);
 
-    // Verify DB count
     const dbCount = await prisma.reservation.count({
       where: {
+        tenantId,
         outletId,
-        startAt: new Date(`${targetDate}T${targetTime}:00+07:00`),
+        startAt: {
+          equals: new Date(`${targetDate}T${targetTime}:00+07:00`),
+        },
         status: { in: ['pending', 'confirmed'] },
       },
     });

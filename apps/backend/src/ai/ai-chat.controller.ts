@@ -1,11 +1,9 @@
-import { BadRequestException, Body, Controller, Headers, NotFoundException, Param, Post, UseInterceptors } from '@nestjs/common';
 import { LlmClient } from './llm.client';
 import { AiToolsService } from './ai-tools.service';
 import { RESTAURANT_TOOLS } from './tools.definition';
-import { SYSTEM_PROMPT } from './prompts';
+import { withOutletScope } from './prompts';
 import { PrismaService } from '../prisma/prisma.service';
-import { createRateLimitInterceptor } from '../common/rate-limit.service';
-import { ChatMessageDto } from './dto/chat-message.dto';
+
 
 const ChatRateLimit = createRateLimitInterceptor({
   windowMs: 60_000,
@@ -13,6 +11,9 @@ const ChatRateLimit = createRateLimitInterceptor({
   keyPrefix: 'ai-chat',
   message: 'Batas pesan chat tercapai (maksimal 20 pesan/menit). Silakan tunggu sebentar.',
 });
+
+type PendingMutation = { toolName: string; args: Record<string, any> };
+const MUTATION_TOOLS = new Set(['create_reservation', 'update_reservation', 'cancel_reservation']);
 
 @Controller('ai/chat')
 export class AiChatController {
@@ -28,6 +29,7 @@ export class AiChatController {
     @Param('tenantId') tenantId: string,
     @Body() body: ChatMessageDto,
     @Headers('x-session-id') sessionIdHeader?: string,
+    @Req() request?: { ip?: string },
   ) {
 
     const sessionId = await this.resolveSession(tenantId, sessionIdHeader);
@@ -69,8 +71,7 @@ export class AiChatController {
       hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
     }).format(now);
     const conversation: any[] = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\nWAKTU SAAT INI (Asia/Jakarta, WIB): ${currentWib}. "Hari ini" berarti tanggal WIB tersebut; "besok" berarti hari berikutnya dalam WIB. Jika tamu sudah menyebut "hari ini", jangan minta tanggal kalender lagi. Jangan mengarang slot kosong; tanyakan hanya cabang dan jumlah tamu yang belum diketahui sebelum memanggil check_availability.` },
-      ...(body.history || []).map((h) => ({ role: h.role, content: h.content })),
+
       { role: 'user', content: body.message },
     ];
 
@@ -92,24 +93,44 @@ export class AiChatController {
 
     // Handle tool call chaining
 
-    if (rawToolCalls && rawToolCalls.length > 0) {
-      conversation.push({
-        ...message,
-        content: message.content ? this.stripXmlToolCalls(message.content) : null,
-        tool_calls: rawToolCalls,
-      });
-
-      const maxToolCalls = 5;
-      const toolCallsToExecute = rawToolCalls.slice(0, maxToolCalls);
-
-      for (const call of toolCallsToExecute) {
         let parsedArgs: Record<string, any> = {};
         try {
           parsedArgs = typeof call.function.arguments === 'string'
             ? JSON.parse(call.function.arguments)
             : (call.function.arguments || {});
         } catch {
-          parsedArgs = {};
+          toolResults.push({
+            name: call.function.name,
+            result: { error: 'Argumen tool dari AI tidak valid.' },
+          });
+          continue;
+        }
+
+        if (outlet && ['check_availability', 'create_reservation'].includes(call.function.name)) {
+          parsedArgs.outletSlug ||= outlet.slug;
+        }
+
+        if (MUTATION_TOOLS.has(call.function.name)) {
+          if (this.isExplicitConfirmation(body.message)) {
+            const result = await this.aiToolsService.executeTool(
+              tenantId,
+              call.function.name,
+              parsedArgs,
+              sessionId,
+            );
+            return { sessionId, reply: this.fallbackFromTools([{ name: call.function.name, result }]) };
+          }
+          await this.prisma.chatSession.update({
+            where: { id: sessionId },
+            data: {
+              pendingMutation: { toolName: call.function.name, args: parsedArgs },
+              pendingMutationExpiresAt: new Date(Date.now() + 15 * 60_000),
+            },
+          });
+          return {
+            sessionId,
+            reply: this.pendingMutationReply(call.function.name, parsedArgs),
+          };
         }
 
         const toolResult = await this.aiToolsService.executeTool(
@@ -118,6 +139,7 @@ export class AiChatController {
           parsedArgs,
           sessionId,
         );
+        toolResults.push({ name: call.function.name, result: toolResult });
 
         conversation.push({
           role: 'tool',
@@ -127,35 +149,7 @@ export class AiChatController {
         });
       }
 
-      // Second turn with tool result to generate natural response.
-      // Do NOT send tools array to force model to answer user directly instead of attempting another tool call or outputting raw XML tags.
-      const secondResponse = await this.llmClient.chatCompletion(conversation, undefined);
 
-      let finalReply = secondResponse.message.content?.trim();
-
-      if (!finalReply || this.containsToolMarkup(finalReply)) {
-        const hasAvailability = conversation.some((item) => item.role === 'tool' && item.name === 'check_availability');
-        const hasMenu = conversation.some((item) => item.role === 'tool' && item.name === 'search_menu');
-
-        if (hasAvailability) {
-          finalReply = this.formatAvailabilityResults(conversation);
-        } else if (hasMenu) {
-          finalReply = this.formatMenuResults(conversation);
-        } else {
-          const thirdResponse = await this.llmClient.chatCompletion([
-            ...conversation,
-            {
-              role: 'system',
-              content: 'Jawab pertanyaan pelanggan secara ramah dalam Bahasa Indonesia berdasarkan data di atas. Jangan memanggil tool lagi dan jangan sertakan tag XML atau format perintah apa pun.',
-            },
-          ]);
-          finalReply = thirdResponse.message.content?.trim();
-        }
-      }
-
-      return {
-        sessionId,
-        reply: this.stripXmlToolCalls(finalReply || 'Berikut adalah informasi menu dan reservasi kami. Apakah ada hal lain yang ingin Anda tanyakan?'),
       };
     }
 
@@ -165,126 +159,54 @@ export class AiChatController {
     };
   }
 
-  private isClearlyOutOfScope(message: string): boolean {
-    return /\b(?:html|css|javascript|typescript|python|java|php|golang|rust|sql|coding|program(?:ming|mer)?|source\s*code|buat(?:kan)?\s+(?:kode|code|script)|skrip)\b/i.test(message);
-  }
 
-  private hasToolMarkup(text: string | null | undefined): boolean {
-    return /<\/?(?:dots_function_call|tool_call|invoke|parameter)\b|<\|tool_call_(?:start|end)\|>/i.test(text || '');
-  }
-
-  private containsToolMarkup(text: string | null | undefined): boolean {
-    return this.hasToolMarkup(text) || /^\s*\[[a-z_]+\(/i.test(text || '');
-  }
-
-  private formatAvailabilityResults(conversation: any[]): string {
-    const results = conversation
-      .filter((item) => item.role === 'tool' && item.name === 'check_availability')
-      .map((item) => {
-        try {
-          const parsed = JSON.parse(item.content);
-          if (parsed.error || typeof parsed.available !== 'boolean') {
-            return `${parsed.outlet || 'Cabang'}: pengecekan gagal; ketersediaan belum diketahui.`;
-          }
-          return `${parsed.outlet || 'Cabang'}: ${parsed.available ? 'tersedia' : 'tidak tersedia'}${parsed.message ? ` (${parsed.message})` : ''}`;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-    return results.length
-      ? `Hasil pengecekan ketersediaan meja:\n${results.map((result) => `- ${result}`).join('\n')}\n\nApakah Anda ingin mencari waktu lain atau melanjutkan reservasi?`
-      : 'Maaf, pengecekan ketersediaan belum dapat diproses. Silakan coba lagi.';
-  }
-
-  private formatMenuResults(conversation: any[]): string {
-    const dishes: Array<{ nama: string; harga: number }> = [];
-    for (const item of conversation) {
-      if (item.role === 'tool' && item.name === 'search_menu') {
-        try {
-          const parsed = JSON.parse(item.content);
-          if (Array.isArray(parsed)) {
-            for (const dish of parsed) {
-              if (dish?.nama && typeof dish?.harga === 'number') dishes.push(dish);
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-    return dishes.length
-      ? `Berikut pilihan menu yang tersedia:\n${dishes.map((d) => `- **${d.nama}** (Rp ${d.harga.toLocaleString('id-ID')})`).join('\n')}\n\nAda menu lain yang ingin Anda tanyakan?`
-      : 'Maaf, menu yang Anda cari belum ditemukan saat ini. Silakan tanyakan menu lainnya!';
-  }
-
-  private parseReadOnlyMarkup(content: string | null, userMessage: string): any[] {
-    const block = content?.match(/^\s*<\|tool_call_start\|>\s*\[([\s\S]*?)\]\s*<\|tool_call_end\|>\s*$/i);
-    if (!block) return [];
-    const calls: any[] = [];
-    const pattern = /(search_menu|check_availability)\s*\(([^()]*)\)/gi;
-    let match: RegExpExecArray | null;
-    let remainder = block[1];
-    while ((match = pattern.exec(block[1])) !== null && calls.length < 5) {
-      remainder = remainder.replace(match[0], '');
-      const args: Record<string, string | number> = {};
-      const argPattern = /([a-zA-Z]+)\s*=\s*(?:(['"])([^'"\r\n]*)\2|(\d{1,2}))/g;
-      let argMatch: RegExpExecArray | null;
-      let argRemainder = match[2];
-      while ((argMatch = argPattern.exec(match[2])) !== null) {
-        if (Object.hasOwn(args, argMatch[1])) return [];
-        args[argMatch[1]] = argMatch[3] ?? Number(argMatch[4]);
-        argRemainder = argRemainder.replace(argMatch[0], '');
-      }
-      if (argRemainder.replace(/[\s,]/g, '')) return [];
-      if (match[1].toLowerCase() === 'check_availability') {
-        const partySize = args.partySize ?? userMessage.match(/\b(?:untuk\s+)?(\d{1,2})\s*orang\b/i)?.[1];
-        if (!partySize || !/^\d{1,2}$/.test(String(partySize)) || Number(partySize) < 1 || Number(partySize) > 12 ||
-          typeof args.outletSlug !== 'string' || !/^[a-z0-9-]+$/i.test(args.outletSlug) ||
-          typeof args.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.date) ||
-          !Number.isFinite(Date.parse(`${args.date}T00:00:00Z`)) ||
-          new Date(`${args.date}T00:00:00Z`).toISOString().slice(0, 10) !== args.date ||
-          typeof args.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(args.time) ||
-          Object.keys(args).some((key) => !['outletSlug', 'date', 'time', 'partySize'].includes(key))) return [];
-        args.partySize = Number(partySize);
-      } else if (Object.keys(args).some((key) => !['query', 'category'].includes(key))) return [];
-      calls.push({
-        id: `read_${calls.length}`,
-        type: 'function',
-        function: { name: match[1].toLowerCase(), arguments: JSON.stringify(args) },
-      });
-    }
-    return calls.length && !remainder.replace(/[\s,]/g, '') ? calls : [];
-  }
-
-  private stripXmlToolCalls(text: string): string {
-    return this.hasToolMarkup(text)
-      ? 'Maaf, informasi belum dapat diproses. Silakan coba lagi; belum ada perubahan reservasi yang dikonfirmasi melalui pesan ini.'
-      : text.trim() || 'Maaf, saya belum dapat menjawab pertanyaan tersebut. Silakan coba lagi.';
-  }
-
-  private static readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-  private async resolveSession(tenantId: string, sessionIdHeader?: string): Promise<string> {
-    if (sessionIdHeader) {
-      if (!AiChatController.UUID_REGEX.test(sessionIdHeader)) {
-        throw new BadRequestException('Format session ID tidak valid.');
-      }
-      const existing = await this.prisma.chatSession.findFirst({
-        where: { id: sessionIdHeader, tenantId },
-        select: { id: true },
-      });
-      if (!existing) throw new NotFoundException('Sesi chat tidak ditemukan.');
-      return existing.id;
-    }
-    return this.getOrCreateSession(tenantId);
-  }
-
-  private async getOrCreateSession(tenantId: string): Promise<string> {
     const session = await this.prisma.chatSession.create({
       data: { tenantId },
-      select: { id: true },
+      select: { id: true, pendingMutation: true, pendingMutationExpiresAt: true },
     });
-    return session.id;
+    return session;
+  }
+
+  private clearPendingMutation(sessionId: string) {
+    return this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { pendingMutation: Prisma.JsonNull, pendingMutationExpiresAt: null },
+    });
+  }
+
+  private isExplicitConfirmation(message: string) {
+    return /^(ya|iya|benar|lanjutkan|oke|ok|setuju)\b/i.test(message.trim());
+  }
+
+  private pendingMutationReply(toolName: string, args: Record<string, any>) {
+    if (toolName === 'create_reservation') {
+      return `Ringkasan: ${args.outletSlug} • ${args.date}, ${args.time} WIB • ${args.partySize} tamu • ${args.customerName} (${maskPhone(args.customerPhone)}). Balas “ya” untuk pesan.`;
+    }
+    if (toolName === 'update_reservation') {
+      const changes = [args.date, args.time && `${args.time} WIB`, args.partySize && `${args.partySize} tamu`]
+        .filter(Boolean)
+        .join(' • ');
+      return `Ubah ${args.code}${changes ? ` menjadi ${changes}` : ''}. Balas “ya” untuk simpan.`;
+    }
+    return `Batalkan reservasi ${args.code}. Balas “ya” untuk konfirmasi.`;
+  }
+
+  private fallbackFromTools(toolResults: Array<{ name: string; result: unknown }>) {
+    const menuResult = toolResults.find((tool) => tool.name === 'search_menu')?.result;
+    if (Array.isArray(menuResult)) {
+      if (menuResult.length === 0) {
+        return 'Maaf, menu yang dicari belum tersedia. Uni/Uda boleh sebutkan lauk atau rasa yang diinginkan.';
+      }
+
+      const items = menuResult.slice(0, 5).map((item: any) =>
+        `- ${item.nama} — Rp${Number(item.harga).toLocaleString('id-ID')}`,
+      );
+      return `Berikut rekomendasi menu yang tersedia:\n${items.join('\n')}\n\nMau yang pedas, gurih, atau yang paling favorit?`;
+    }
+
+    const resultWithMessage = toolResults
+      .map((tool) => tool.result as { message?: string })
+      .find((result) => result?.message);
+    return resultWithMessage?.message || 'Data sudah kami cek. Ada lagi yang ingin Uni/Uda tanyakan?';
   }
 }

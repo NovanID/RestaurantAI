@@ -369,6 +369,8 @@ model ChatSession {
   verifiedReservationId String?   @map("verified_reservation_id") @db.Uuid
   startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz
   lastActiveAt          DateTime  @default(now()) @map("last_active_at") @db.Timestamptz
+  pendingMutation       Json?     @map("pending_mutation")
+  pendingMutationExpiresAt DateTime? @map("pending_mutation_expires_at") @db.Timestamptz
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   outlet   Outlet?       @relation(fields: [outletId], references: [id], onDelete: SetNull)

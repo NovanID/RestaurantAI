@@ -9,6 +9,7 @@ import { MenuService } from './menu.service';
 import { CreateMenuCategoryDto, UpdateMenuCategoryDto, CreateMenuItemDto, UpdateMenuItemDto } from './dto';
 
 type User = { tenantId: string; userId: string };
+type UploadedMenuFile = { filename: string; size: number };
 
 const storage = diskStorage({
   destination: (req, file, cb) => {
@@ -45,7 +46,7 @@ export class MenuController {
       },
     }),
   )
-  uploadImage(@UploadedFile() file?: Express.Multer.File) {
+  uploadImage(@UploadedFile() file?: UploadedMenuFile) {
     if (!file) {
       throw new BadRequestException('File gambar tidak ditemukan dalam permintaan.');
     }

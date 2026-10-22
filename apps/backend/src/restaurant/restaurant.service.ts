@@ -6,6 +6,13 @@ import { recordAdminAudit } from '../audit/admin-audit';
 export class RestaurantService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async tenantBySlug(slug: string) {
+    return this.prisma.tenant.findUniqueOrThrow({
+      where: { slug },
+      select: { id: true, name: true, slug: true },
+    });
+  }
+
   outlets(tenantId?: string) {
     return this.prisma.outlet.findMany({
       where: { isActive: true, ...(tenantId ? { tenantId } : {}) },

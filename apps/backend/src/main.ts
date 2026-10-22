@@ -19,9 +19,6 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
   app.enableCors({
     origin: allowedOrigins,

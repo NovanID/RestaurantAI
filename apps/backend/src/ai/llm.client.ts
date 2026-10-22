@@ -26,15 +26,7 @@ export class LlmClient {
   private readonly appName?: string;
 
   constructor() {
-    this.baseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
-    this.apiKey = process.env.OPENROUTER_API_KEY || '';
-    this.model = process.env.LLM_TOOL_MODEL || process.env.LLM_DEFAULT_MODEL || '';
-    this.appUrl = process.env.OPENROUTER_APP_URL;
-    this.appName = process.env.OPENROUTER_APP_NAME;
-  }
 
-  private getModel(): string {
-    return process.env.LLM_TOOL_MODEL || process.env.LLM_DEFAULT_MODEL || this.model;
   }
 
   async chatCompletion(

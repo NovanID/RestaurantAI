@@ -15,6 +15,13 @@ export class ReservationsService {
   ) {}
 
   async create(input: CreateReservationDto) {
+    const outlet = await this.prisma.outlet.findUniqueOrThrow({ where: { id: input.outletId } });
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.reservation.findFirst({
+        where: { tenantId: outlet.tenantId, idempotencyKey: input.idempotencyKey },
+      });
+      if (existing) return existing;
+    }
     const availability = await this.availabilityService.find(
       input.outletId,
       input.date,
@@ -24,30 +31,22 @@ export class ReservationsService {
     if (!availability.available || !availability.startAt || !availability.endAt) {
       throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot tidak tersedia.' });
     }
-    const outlet = await this.prisma.outlet.findUniqueOrThrow({ where: { id: input.outletId } });
-    const expiresAt = new Date(Date.now() + 15 * 60_000);
+
     const customer = await this.prisma.customer.upsert({
       where: { tenantId_phone: { tenantId: outlet.tenantId, phone: input.phone } },
       update: { name: input.name },
       create: { tenantId: outlet.tenantId, name: input.name, phone: input.phone },
     });
     try {
-      return await this.prisma.reservation.create({
-        data: {
-          tenantId: outlet.tenantId,
-          outletId: outlet.id,
-          customerId: customer.id,
-          tableId: availability.tables[0].id,
-          startAt: availability.startAt,
-          endAt: availability.endAt,
-          partySize: input.partySize,
-          code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
-          idempotencyKey: input.idempotencyKey,
-          notes: input.notes,
-          expiresAt,
-        },
+
       });
     } catch (error) {
+      if (this.isIdempotencyConflict(error) && input.idempotencyKey) {
+        const existing = await this.prisma.reservation.findFirst({
+          where: { tenantId: outlet.tenantId, idempotencyKey: input.idempotencyKey },
+        });
+        if (existing) return existing;
+      }
       if (this.isSlotConflict(error)) {
         throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot baru saja diambil tamu lain.' });
       }
@@ -63,11 +62,7 @@ export class ReservationsService {
 
   async verify(code: string, phoneLast4: string, tenantId?: string) {
     const reservation = await this.prisma.reservation.findFirst({
-      where: {
-        code,
-        customer: { phone: { endsWith: phoneLast4 } },
-        ...(tenantId ? { tenantId } : {}),
-      },
+
       include: { outlet: true, table: true, customer: true },
     });
     if (!reservation) throw new NotFoundException('Reservasi tidak ditemukan.');
@@ -374,18 +369,6 @@ export class ReservationsService {
 
   private isSlotConflict(error: unknown) {
     if (typeof error !== 'object' || error === null) return false;
-    const err = error as Record<string, any>;
-    if (err.code === 'P2010') return true;
-    if (typeof err.message === 'string') {
-      if (
-        err.message.includes('23P01') ||
-        err.message.includes('no_overlapping_reservations') ||
-        err.message.includes('40P01') ||
-        err.message.includes('deadlock detected')
-      ) {
-        return true;
-      }
-    }
-    return false;
+
   }
 }
