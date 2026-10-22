@@ -1,14 +1,20 @@
-import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Param, Post, Req } from '@nestjs/common';
 import { LlmClient } from './llm.client';
 import { AiToolsService } from './ai-tools.service';
 import { RESTAURANT_TOOLS } from './tools.definition';
 import { withOutletScope } from './prompts';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+import { enforceRateLimit } from '../rate-limit.util';
+import { maskPhone } from './phone-mask.util';
 
 export interface ChatMessageRequest {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
+
+type PendingMutation = { toolName: string; args: Record<string, any> };
+const MUTATION_TOOLS = new Set(['create_reservation', 'update_reservation', 'cancel_reservation']);
 
 @Controller('ai/chat')
 export class AiChatController {
@@ -23,8 +29,34 @@ export class AiChatController {
     @Param('tenantId') tenantId: string,
     @Body() body: ChatMessageRequest,
     @Headers('x-session-id') sessionIdHeader?: string,
+    @Req() request?: { ip?: string },
   ) {
-    const sessionId = sessionIdHeader || (await this.getOrCreateSession(tenantId));
+    enforceRateLimit(`chat:${tenantId}:${request?.ip ?? 'unknown'}`, 20, 60_000);
+    const session = await this.getOrCreateSession(tenantId, sessionIdHeader);
+    const sessionId = session.id;
+    const pending = session.pendingMutation as PendingMutation | null;
+    if (pending) {
+      if (session.pendingMutationExpiresAt && session.pendingMutationExpiresAt <= new Date()) {
+        await this.clearPendingMutation(sessionId);
+      } else if (/^(batal|tidak|jangan)\b/i.test(body.message.trim())) {
+        await this.clearPendingMutation(sessionId);
+        return { sessionId, reply: 'Baik, tindakan reservasi dibatalkan.' };
+      } else if (this.isExplicitConfirmation(body.message)) {
+        const result = await this.aiToolsService.executeTool(
+          tenantId,
+          pending.toolName,
+          pending.args,
+          sessionId,
+        );
+        await this.clearPendingMutation(sessionId);
+        return { sessionId, reply: this.fallbackFromTools([{ name: pending.toolName, result }]) };
+      } else {
+        return {
+          sessionId,
+          reply: 'Masih ada tindakan reservasi yang menunggu persetujuan. Balas “ya” untuk melanjutkan atau kirim “batal”.',
+        };
+      }
+    }
     // shortcut: the earliest active outlet is the chat scope; add an explicit outlet selector when multi-outlet chat is needed.
     const outlet = await this.prisma.outlet.findFirst({
       where: { tenantId, isActive: true },
@@ -35,7 +67,12 @@ export class AiChatController {
     // Construct prompt history
     const conversation: any[] = [
       { role: 'system', content: withOutletScope(outlet || undefined) },
-      ...(body.history || []).map((h) => ({ role: h.role, content: h.content })),
+      ...(body.history || [])
+        .filter(
+          (h): h is { role: 'user' | 'assistant'; content: string } =>
+            (h?.role === 'user' || h?.role === 'assistant') && typeof h.content === 'string',
+        )
+        .map((h) => ({ role: h.role, content: h.content })),
       { role: 'user', content: body.message },
     ];
 
@@ -49,15 +86,54 @@ export class AiChatController {
       const toolResults: Array<{ name: string; result: unknown }> = [];
 
       for (const call of message.tool_calls) {
+        if (
+          !call?.id ||
+          typeof call.function?.name !== 'string' ||
+          typeof call.function?.arguments !== 'string'
+        ) {
+          toolResults.push({
+            name: 'invalid_tool_call',
+            result: { error: 'Respons tool dari AI tidak valid.' },
+          });
+          continue;
+        }
+
         let parsedArgs: Record<string, any> = {};
         try {
           parsedArgs = JSON.parse(call.function.arguments);
         } catch {
-          parsedArgs = {};
+          toolResults.push({
+            name: call.function.name,
+            result: { error: 'Argumen tool dari AI tidak valid.' },
+          });
+          continue;
         }
 
         if (outlet && ['check_availability', 'create_reservation'].includes(call.function.name)) {
           parsedArgs.outletSlug ||= outlet.slug;
+        }
+
+        if (MUTATION_TOOLS.has(call.function.name)) {
+          if (this.isExplicitConfirmation(body.message)) {
+            const result = await this.aiToolsService.executeTool(
+              tenantId,
+              call.function.name,
+              parsedArgs,
+              sessionId,
+            );
+            return { sessionId, reply: this.fallbackFromTools([{ name: call.function.name, result }]) };
+          }
+          await this.prisma.chatSession.update({
+            where: { id: sessionId },
+            data: {
+              pendingMutation: { toolName: call.function.name, args: parsedArgs },
+              pendingMutationExpiresAt: new Date(Date.now() + 15 * 60_000),
+            },
+          });
+          return {
+            sessionId,
+            reply: this.pendingMutationReply(call.function.name, parsedArgs),
+          };
         }
 
         const toolResult = await this.aiToolsService.executeTool(
@@ -93,12 +169,43 @@ export class AiChatController {
     };
   }
 
-  private async getOrCreateSession(tenantId: string): Promise<string> {
+  private async getOrCreateSession(tenantId: string, sessionId?: string) {
+    if (sessionId) {
+      const existing = await this.prisma.chatSession.findFirst({
+        where: { id: sessionId, tenantId },
+        select: { id: true, pendingMutation: true, pendingMutationExpiresAt: true },
+      });
+      if (existing) return existing;
+    }
     const session = await this.prisma.chatSession.create({
       data: { tenantId },
-      select: { id: true },
+      select: { id: true, pendingMutation: true, pendingMutationExpiresAt: true },
     });
-    return session.id;
+    return session;
+  }
+
+  private clearPendingMutation(sessionId: string) {
+    return this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { pendingMutation: Prisma.JsonNull, pendingMutationExpiresAt: null },
+    });
+  }
+
+  private isExplicitConfirmation(message: string) {
+    return /^(ya|iya|benar|lanjutkan|oke|ok|setuju)\b/i.test(message.trim());
+  }
+
+  private pendingMutationReply(toolName: string, args: Record<string, any>) {
+    if (toolName === 'create_reservation') {
+      return `Ringkasan: ${args.outletSlug} • ${args.date}, ${args.time} WIB • ${args.partySize} tamu • ${args.customerName} (${maskPhone(args.customerPhone)}). Balas “ya” untuk pesan.`;
+    }
+    if (toolName === 'update_reservation') {
+      const changes = [args.date, args.time && `${args.time} WIB`, args.partySize && `${args.partySize} tamu`]
+        .filter(Boolean)
+        .join(' • ');
+      return `Ubah ${args.code}${changes ? ` menjadi ${changes}` : ''}. Balas “ya” untuk simpan.`;
+    }
+    return `Batalkan reservasi ${args.code}. Balas “ya” untuk konfirmasi.`;
   }
 
   private fallbackFromTools(toolResults: Array<{ name: string; result: unknown }>) {

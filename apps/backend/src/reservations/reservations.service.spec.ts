@@ -80,6 +80,17 @@ describe('ReservationsService', () => {
     );
   });
 
+  it('scopes verification to the requested tenant when one is provided', async () => {
+    prisma.reservation.findFirst.mockResolvedValue(null);
+
+    await expect(service.verify('RSV-123', '1234', 'tenant-1')).rejects.toThrow('Reservasi tidak ditemukan.');
+    expect(prisma.reservation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ code: 'RSV-123', tenantId: 'tenant-1' }),
+      }),
+    );
+  });
+
   it('updates reservation details within cutoff window and records history & audit', async () => {
     const futureDate = new Date(Date.now() + 24 * 60 * 60_000);
     const existing = {
@@ -141,5 +152,38 @@ describe('ReservationsService', () => {
     await expect(
       service.update('RSV-XYZ', { phoneLast4: '7890', partySize: 3 }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('persists the idempotency key and an expiry for a new pending reservation', async () => {
+    const now = new Date('2026-10-22T03:00:00Z');
+    jest.useFakeTimers({ now });
+    const tx: any = {
+      $executeRaw: jest.fn(),
+      reservation: { create: jest.fn().mockResolvedValue({ code: 'RSV-NEW', status: 'pending' }) },
+    };
+    const prismaForCreate: any = {
+      outlet: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'outlet-1', tenantId: 'tenant-1' }) },
+      reservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      customer: { upsert: jest.fn().mockResolvedValue({ id: 'customer-1' }) },
+      $transaction: jest.fn((work: any) => work(tx)),
+    };
+    const createService = new ReservationsService(prismaForCreate, {
+      find: jest.fn().mockResolvedValue({
+        available: true,
+        tables: [{ id: 'table-1' }],
+        startAt: new Date('2026-10-23T12:00:00Z'),
+        endAt: new Date('2026-10-23T13:30:00Z'),
+      }),
+    } as never);
+
+    await createService.create({
+      outletId: 'outlet-1', date: '2026-10-23', time: '19:00', partySize: 2,
+      name: 'Budi', phone: '081234567890', idempotencyKey: 'request-1',
+    });
+
+    expect(tx.reservation.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ idempotencyKey: 'request-1', expiresAt: new Date(now.getTime() + 15 * 60_000) }),
+    }));
+    jest.useRealTimers();
   });
 });

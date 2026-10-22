@@ -108,6 +108,21 @@ describe('AiToolsService Unit Tests', () => {
       expect(res.code).toBe('RSV-888');
       expect(res.nomorTelepon).toBe('0812****4321');
     });
+
+    it('masks formatted phone numbers returned by verification', async () => {
+      prisma.reservation.findFirst.mockResolvedValue({
+        code: 'RSV-888', status: 'confirmed', startAt: new Date('2026-11-25T12:00:00Z'), partySize: 2,
+        outlet: { name: 'Cabang Kemang', slug: 'kemang' }, table: null,
+        customer: { name: 'Uni Rina', phone: '0812-3456-7890' },
+      });
+
+      const res = await service.executeTool('t-1', 'verify_reservation', {
+        code: 'RSV-888', phoneLast4: '7890',
+      });
+
+      expect(res.nomorTelepon).not.toContain('3456');
+      expect(res.nomorTelepon).toContain('7890');
+    });
   });
 
   describe('tool logging and phone masking (PRO-93)', () => {
@@ -147,5 +162,24 @@ describe('AiToolsService Unit Tests', () => {
         }),
       );
     });
+  });
+
+  it('passes the chat tenant to reservation update and cancellation', async () => {
+    reservationsService.update.mockResolvedValue({ code: 'RSV-1', status: 'pending' });
+    reservationsService.cancel.mockResolvedValue({ code: 'RSV-1', status: 'cancelled' });
+
+    await service.executeTool('tenant-1', 'update_reservation', {
+      code: 'RSV-1', phoneLast4: '1234', partySize: 3,
+    });
+    await service.executeTool('tenant-1', 'cancel_reservation', {
+      code: 'RSV-1', phoneLast4: '1234',
+    });
+
+    expect(reservationsService.update).toHaveBeenCalledWith(
+      'RSV-1',
+      expect.objectContaining({ phoneLast4: '1234', partySize: 3 }),
+      'tenant-1',
+    );
+    expect(reservationsService.cancel).toHaveBeenCalledWith('RSV-1', '1234', undefined, 'tenant-1');
   });
 });

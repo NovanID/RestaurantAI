@@ -25,9 +25,11 @@ type ReservationDetail = {
 export default function ReservationManageModal({
   isOpen,
   onClose,
+  tenantId,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  tenantId: string;
 }) {
   const [code, setCode] = useState('');
   const [phoneLast4, setPhoneLast4] = useState('');
@@ -62,7 +64,7 @@ export default function ReservationManageModal({
     try {
       const res = await fetch(`${apiUrl}/reservations/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({ code: code.trim().toUpperCase(), phoneLast4: phoneLast4.trim() }),
       });
       const json = await res.json();
@@ -94,7 +96,7 @@ export default function ReservationManageModal({
     try {
       const res = await fetch(`${apiUrl}/reservations/${encodeURIComponent(reservation.code)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({
           phoneLast4: phoneLast4.trim(),
           date: editDate,
@@ -129,7 +131,7 @@ export default function ReservationManageModal({
     try {
       const res = await fetch(`${apiUrl}/reservations/${encodeURIComponent(reservation.code)}/cancel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({ phoneLast4: phoneLast4.trim() }),
       });
       const json = await res.json();
