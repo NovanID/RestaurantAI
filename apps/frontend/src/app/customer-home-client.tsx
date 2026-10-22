@@ -284,6 +284,7 @@ export default function CustomerHomeClient({
       <ReservationManageModal
         isOpen={isManageOpen}
         onClose={() => setIsManageOpen(false)}
+        tenantId={tenantId}
       />
 
       {/* Floating AI Chat Widget (PRO-89) */}

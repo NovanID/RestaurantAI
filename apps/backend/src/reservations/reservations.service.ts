@@ -15,6 +15,13 @@ export class ReservationsService {
   ) {}
 
   async create(input: CreateReservationDto) {
+    const outlet = await this.prisma.outlet.findUniqueOrThrow({ where: { id: input.outletId } });
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.reservation.findFirst({
+        where: { tenantId: outlet.tenantId, idempotencyKey: input.idempotencyKey },
+      });
+      if (existing) return existing;
+    }
     const availability = await this.availabilityService.find(
       input.outletId,
       input.date,
@@ -24,7 +31,6 @@ export class ReservationsService {
     if (!availability.available || !availability.startAt || !availability.endAt) {
       throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot tidak tersedia.' });
     }
-    const outlet = await this.prisma.outlet.findUniqueOrThrow({ where: { id: input.outletId } });
     const customer = await this.prisma.customer.upsert({
       where: { tenantId_phone: { tenantId: outlet.tenantId, phone: input.phone } },
       update: { name: input.name },
@@ -55,10 +61,18 @@ export class ReservationsService {
             partySize: input.partySize,
             code: `RSV-${randomBytes(3).toString('hex').toUpperCase()}`,
             notes: input.notes,
+            idempotencyKey: input.idempotencyKey,
+            expiresAt: new Date(Date.now() + this.pendingTtlMinutes() * 60_000),
           },
         });
       });
     } catch (error) {
+      if (this.isIdempotencyConflict(error) && input.idempotencyKey) {
+        const existing = await this.prisma.reservation.findFirst({
+          where: { tenantId: outlet.tenantId, idempotencyKey: input.idempotencyKey },
+        });
+        if (existing) return existing;
+      }
       if (this.isSlotConflict(error)) {
         throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot baru saja diambil tamu lain.' });
       }
@@ -66,17 +80,17 @@ export class ReservationsService {
     }
   }
 
-  async verify(code: string, phoneLast4: string) {
+  async verify(code: string, phoneLast4: string, tenantId?: string) {
     const reservation = await this.prisma.reservation.findFirst({
-      where: { code, customer: { phone: { endsWith: phoneLast4 } } },
+      where: { code, ...(tenantId ? { tenantId } : {}), customer: { phone: { endsWith: phoneLast4 } } },
       include: { outlet: true, table: true, customer: true },
     });
     if (!reservation) throw new NotFoundException('Reservasi tidak ditemukan.');
     return reservation;
   }
 
-  async update(code: string, input: UpdateReservationDto) {
-    const reservation = await this.verify(code, input.phoneLast4);
+  async update(code: string, input: UpdateReservationDto, tenantId?: string) {
+    const reservation = await this.verify(code, input.phoneLast4, tenantId);
     if (!['pending', 'confirmed'].includes(reservation.status)) {
       throw new ConflictException('Reservasi tidak dapat diubah.');
     }
@@ -134,8 +148,8 @@ export class ReservationsService {
     }
   }
 
-  async cancel(code: string, phoneLast4: string, actorId?: string) {
-    const reservation = await this.verify(code, phoneLast4);
+  async cancel(code: string, phoneLast4: string, actorId?: string, tenantId?: string) {
+    const reservation = await this.verify(code, phoneLast4, tenantId);
     if (!['pending', 'confirmed'].includes(reservation.status)) {
       throw new ConflictException('Reservasi tidak dapat dibatalkan.');
     }
@@ -308,5 +322,16 @@ export class ReservationsService {
     if (typeof error !== 'object' || error === null) return false;
     const { code, cause } = error as { code?: string; cause?: { code?: string } };
     return ['P2010', 'P2034', '23P01', '40P01'].includes(code ?? cause?.code ?? '');
+  }
+
+  private isIdempotencyConflict(error: unknown) {
+    if (typeof error !== 'object' || error === null) return false;
+    const { code, cause } = error as { code?: string; cause?: { code?: string } };
+    return (code ?? cause?.code) === 'P2002';
+  }
+
+  private pendingTtlMinutes() {
+    const configured = Number(process.env.RESERVATION_PENDING_TTL_MINUTES ?? 15);
+    return Number.isFinite(configured) && configured > 0 ? configured : 15;
   }
 }

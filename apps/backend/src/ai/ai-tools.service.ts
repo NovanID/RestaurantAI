@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { ReservationsService } from '../reservations/reservations.service';
-import { maskSensitiveData } from './phone-mask.util';
+import { maskPhone, maskSensitiveData } from './phone-mask.util';
 
 @Injectable()
 export class AiToolsService {
@@ -205,7 +205,7 @@ export class AiToolsService {
       jam: localTime.slice(11, 16) + ' WIB',
       tamu: rsv.partySize,
       pemesan: rsv.customer.name,
-      nomorTelepon: rsv.customer.phone.replace(/(\d{4})\d+(\d{4})/, '$1****$2'),
+      nomorTelepon: maskPhone(rsv.customer.phone),
       meja: rsv.table?.tableNumber,
       catatan: rsv.notes,
     };
@@ -232,34 +232,38 @@ export class AiToolsService {
       success: true,
       code: created.code,
       status: created.status,
-      message: `Reservasi berhasil dibuat dengan kode tiket ${created.code}. Tim kami menunggu kedatangan Uni/Uda di ${outlet.name}.`,
+      message: `Reservasi berhasil. Kode tiket: ${created.code}.`,
     };
   }
 
   async updateReservation(tenantId: string, args: any) {
-    const updated = await this.reservationsService.update(args.code, {
-      phoneLast4: args.phoneLast4,
-      date: args.date,
-      time: args.time,
-      partySize: args.partySize ? Number(args.partySize) : undefined,
-      notes: args.notes,
-    });
+    const updated = await this.reservationsService.update(
+      args.code,
+      {
+        phoneLast4: args.phoneLast4,
+        date: args.date,
+        time: args.time,
+        partySize: args.partySize ? Number(args.partySize) : undefined,
+        notes: args.notes,
+      },
+      tenantId,
+    );
 
     return {
       success: true,
       code: updated.code,
       status: updated.status,
-      message: `Jadwal reservasi ${updated.code} berhasil diperbarui.`,
+      message: `Reservasi ${updated.code} berhasil diperbarui.`,
     };
   }
 
   async cancelReservation(tenantId: string, code: string, phoneLast4: string) {
-    const cancelled = await this.reservationsService.cancel(code, phoneLast4);
+    const cancelled = await this.reservationsService.cancel(code, phoneLast4, undefined, tenantId);
     return {
       success: true,
       code: cancelled.code,
       status: cancelled.status,
-      message: `Reservasi ${cancelled.code} telah dibatalkan atas permintaan Anda.`,
+      message: `Reservasi ${cancelled.code} dibatalkan.`,
     };
   }
 
