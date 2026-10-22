@@ -31,6 +31,9 @@ export class ReservationsService {
     if (!availability.available || !availability.startAt || !availability.endAt) {
       throw new ConflictException({ code: 'SLOT_TAKEN', message: 'Slot tidak tersedia.' });
     }
+    const preOrderItems = input.preOrder
+      ? await this.resolvePreOrderItems(outlet.tenantId, input.preOrder.items)
+      : [];
     const customer = await this.prisma.customer.upsert({
       where: { tenantId_phone: { tenantId: outlet.tenantId, phone: input.phone } },
       update: { name: input.name },
@@ -63,6 +66,20 @@ export class ReservationsService {
             notes: input.notes,
             idempotencyKey: input.idempotencyKey,
             expiresAt: new Date(Date.now() + this.pendingTtlMinutes() * 60_000),
+            ...(input.preOrder
+              ? {
+                  preOrder: {
+                    create: {
+                      tenantId: outlet.tenantId,
+                      subtotalIdr: preOrderItems.reduce((total, item) => total + item.lineTotalIdr, 0),
+                      notes: input.preOrder.notes,
+                      paymentMethod: 'pay_at_venue',
+                      paymentStatus: 'pending',
+                      items: { create: preOrderItems },
+                    },
+                  },
+                }
+              : {}),
           },
         });
       });
@@ -333,5 +350,31 @@ export class ReservationsService {
   private pendingTtlMinutes() {
     const configured = Number(process.env.RESERVATION_PENDING_TTL_MINUTES ?? 15);
     return Number.isFinite(configured) && configured > 0 ? configured : 15;
+  }
+
+  private async resolvePreOrderItems(
+    tenantId: string,
+    items: Array<{ menuItemId: string; quantity: number; notes?: string }>,
+  ) {
+    if (items.length === 0) throw new ConflictException('Pre-order harus memiliki minimal satu item.');
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: { tenantId, isActive: true, isAvailable: true, id: { in: items.map((item) => item.menuItemId) } },
+      select: { id: true, name: true, priceIdr: true },
+    });
+    const byId = new Map(menuItems.map((item) => [item.id, item]));
+    if (byId.size !== new Set(items.map((item) => item.menuItemId)).size) {
+      throw new ConflictException('Satu atau lebih menu tidak tersedia.');
+    }
+    return items.map((item) => {
+      const menuItem = byId.get(item.menuItemId)!;
+      return {
+        menuItemId: menuItem.id,
+        nameSnapshot: menuItem.name,
+        unitPriceIdr: menuItem.priceIdr,
+        quantity: item.quantity,
+        lineTotalIdr: menuItem.priceIdr * item.quantity,
+        notes: item.notes,
+      };
+    });
   }
 }
