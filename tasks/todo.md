@@ -1,15 +1,14 @@
-# Phase 3 implementation
+# Phase 5: Joint Hardening & Staging
 
-- [x] Inspect Linear acceptance criteria and current code
-- [x] PRO-98: Reservation update implemented; state-transition races and regression coverage pending
-- [x] PRO-97: Expiry worker implemented; scheduler and database verification pending
-- [x] PRO-96: Add 50-request concurrency integration test
-- [x] PRO-95: Implement read-only AI tools (restaurant & menu info)
-- [x] PRO-93: Implement chat/tool call logging & phone masking
-- [x] PRO-94: Implement AI reservation mutation tools (confirmation gate & idempotency)
-- [x] PRO-88: Implement LLM orchestration, persona, & chat endpoint
-- [x] PRO-92: Customer web outlet info & menu integration
-- [x] PRO-91: Customer web check table & create reservation
-- [x] PRO-90: Customer web view, update, cancel reservation
-- [x] PRO-89: Customer web floating AI chat widget with streaming
-- [x] Final verification across tests, builds, and Linear issue statuses
+## Overview
+Status Linear Project: **Completed**
+Active Branch: `feat/phase-5-joint-hardening-staging`
+
+## Issues Tracker (7 Tiket)
+- [x] PRO-83: Tes double booking dan konkurensi final (Verifikasi PostgreSQL nyata: btree_gist exclusion constraint 23P01/40P01 lolos 50 request konkruen)
+- [x] PRO-82: Perbaikan prompt dari hasil evaluasi AI (Server-side two-stage confirmation gate & non-fallthrough failure recovery)
+- [x] PRO-79: Observability minimum (NestJS structured logging, request_id sanitasi PII, latency tracking)
+- [x] PRO-80: Review keamanan (CORS allowlist, JWT secret validation min 32 char, sanitasi input DTO, rate limit login & mutasi)
+- [x] PRO-81: Aksesibilitas dan tes mobile (Keyboard WCAG AA Escape/focus-visible, ARIA dialog, responsive mobile 360px)
+- [x] PRO-78: Deploy staging (Docker Compose staging profile, Dockerfile multi-stage, environment config, health checks)
+- [x] PRO-77: Bug bash (E2E full flow verification, edge case testing, compatibility bugfix query params)

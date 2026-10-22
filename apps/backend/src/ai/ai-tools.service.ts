@@ -7,6 +7,16 @@ import { maskPhone, maskSensitiveData } from './phone-mask.util';
 @Injectable()
 export class AiToolsService {
   private readonly logger = new Logger(AiToolsService.name);
+  private readonly pendingMutations = new Map<string, {
+    toolName: string;
+    args: Record<string, any>;
+    expiresAt: number;
+  }>();
+  private readonly mutationTools = new Set([
+    'create_reservation',
+    'update_reservation',
+    'cancel_reservation',
+  ]);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -20,12 +30,18 @@ export class AiToolsService {
     args: Record<string, any>,
     sessionId?: string,
     messageId?: string,
+    confirmed = false,
   ): Promise<any> {
     const startTime = Date.now();
     let status: 'ok' | 'error' = 'ok';
     let result: any;
 
     try {
+      if (this.mutationTools.has(toolName)) {
+        result = this.authorizeMutation(tenantId, sessionId, toolName, args, confirmed);
+        if (result) return result;
+      }
+
       switch (toolName) {
         case 'get_restaurant_info':
           result = await this.getRestaurantInfo(tenantId, args.outletSlug);
@@ -71,7 +87,69 @@ export class AiToolsService {
     return result;
   }
 
-  // --- READ-ONLY TOOLS (PRO-95) ---
+  async confirmPendingMutation(tenantId: string, sessionId: string) {
+    this.cleanExpiredMutations();
+    const pending = this.pendingMutations.get(`${tenantId}:${sessionId}`);
+    if (!pending) return { error: 'Tidak ada perubahan yang menunggu konfirmasi.' };
+    return this.executeTool(tenantId, pending.toolName, pending.args, sessionId, undefined, true);
+  }
+
+  private authorizeMutation(
+    tenantId: string,
+    sessionId: string | undefined,
+    toolName: string,
+    args: Record<string, any>,
+    confirmed: boolean,
+  ) {
+    if (!sessionId) {
+      throw new BadRequestException('Sesi chat wajib tersedia untuk perubahan reservasi.');
+    }
+
+    this.cleanExpiredMutations();
+
+    const key = `${tenantId}:${sessionId}`;
+    const pending = this.pendingMutations.get(key);
+    const canonicalize = (value: Record<string, any>) =>
+      JSON.stringify(Object.keys(value).sort().map((key) => [key, value[key]]));
+    if (confirmed && pending && pending.toolName === toolName
+      && canonicalize(pending.args) === canonicalize(args)) {
+      this.pendingMutations.delete(key);
+      return undefined;
+    }
+
+    this.pendingMutations.set(key, {
+      toolName,
+      args: JSON.parse(JSON.stringify(args)),
+      expiresAt: Date.now() + 5 * 60_000,
+    });
+
+    return {
+      confirmationRequired: true,
+      message: 'Konfirmasi eksplisit diperlukan. Tampilkan ringkasan data, lalu minta pelanggan mengonfirmasi dengan jelas sebelum reservasi diproses.',
+    };
+  }
+
+  cleanExpiredMutations() {
+    const now = Date.now();
+    for (const [key, val] of this.pendingMutations.entries()) {
+      if (val.expiresAt <= now) {
+        this.pendingMutations.delete(key);
+      }
+    }
+    if (this.pendingMutations.size > 1000) {
+      const oldestKey = this.pendingMutations.keys().next().value;
+      if (oldestKey) this.pendingMutations.delete(oldestKey);
+    }
+  }
+
+  clearPendingMutation(tenantId: string, sessionId: string): boolean {
+    const key = `${tenantId}:${sessionId}`;
+    const exists = this.pendingMutations.has(key);
+    this.pendingMutations.delete(key);
+    return exists;
+  }
+
+  // --- READ-ONLY TOOLS ---
 
   async getRestaurantInfo(tenantId: string, outletSlug?: string) {
     const outlets = (await (this.prisma.outlet as any).findMany({

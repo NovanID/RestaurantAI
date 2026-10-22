@@ -1,0 +1,11 @@
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:

@@ -2,8 +2,7 @@ import { Suspense } from 'react';
 import CustomerHomeClient, { MenuItem, Outlet } from './customer-home-client';
 
 async function CustomerDataContent() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-  const tenantSlug = process.env.NEXT_PUBLIC_TENANT_SLUG || 'padang-sederhana';
+
 
   let menuItems: MenuItem[] = [];
   let outlets: Outlet[] = [];

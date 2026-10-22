@@ -21,9 +21,11 @@ const STATUS_FILTERS = [
   { value: "", label: "Semua Status" },
   { value: "pending", label: "Pending (Menunggu)" },
   { value: "confirmed", label: "Terkonfirmasi" },
-  { value: "rejected", label: "Ditolak" },
-  { value: "cancelled", label: "Dibatalkan" },
   { value: "completed", label: "Selesai" },
+  { value: "no_show", label: "Tidak Hadir (No Show)" },
+  { value: "cancelled", label: "Dibatalkan Tamu" },
+  { value: "rejected", label: "Ditolak Petugas" },
+  { value: "expired", label: "Kedaluwarsa" },
 ];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
@@ -87,7 +89,11 @@ export default function ReservationsPage() {
     await loadReservations();
   }
 
-  async function executeStatusChange(id: string, action: "approve" | "reject", reason?: string) {
+  async function executeStatusChange(
+    id: string,
+    action: "approve" | "reject" | "complete" | "no-show",
+    reason?: string,
+  ) {
     setProcessingId(id);
     setError("");
     try {
@@ -107,6 +113,14 @@ export default function ReservationsPage() {
 
   function handleApprove(id: string) {
     void executeStatusChange(id, "approve");
+  }
+
+  function handleComplete(id: string) {
+    void executeStatusChange(id, "complete");
+  }
+
+  function handleNoShow(id: string) {
+    void executeStatusChange(id, "no-show");
   }
 
   function openRejectModal(reservation: Reservation) {
@@ -314,6 +328,27 @@ export default function ReservationsPage() {
                             type="button"
                           >
                             Tolak
+                          </button>
+                        </div>
+                      ) : reservation.status === "confirmed" ? (
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <button
+                            disabled={processingId === reservation.id}
+                            className="btn-pandan disabled:opacity-50 text-[11px]"
+                            onClick={() => handleComplete(reservation.id)}
+                            type="button"
+                            title="Tandai tamu hadir dan reservasi selesai"
+                          >
+                            Selesai
+                          </button>
+                          <button
+                            disabled={processingId === reservation.id}
+                            className="btn-outline disabled:opacity-50 text-[11px] hover:border-[var(--chili)] hover:text-[var(--chili-light)]"
+                            onClick={() => handleNoShow(reservation.id)}
+                            type="button"
+                            title="Tandai tamu tidak hadir (No Show)"
+                          >
+                            Tidak Hadir
                           </button>
                         </div>
                       ) : (

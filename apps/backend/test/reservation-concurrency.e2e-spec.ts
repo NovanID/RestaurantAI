@@ -3,13 +3,14 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { randomBytes } from 'crypto';
 
-describe('Reservation Concurrency (50 requests to 1 slot)', () => {
+
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantId: string;
   let outletId: string;
-  const targetDate = '2026-11-20';
+
   const targetTime = '13:00';
 
   beforeAll(async () => {
@@ -23,43 +24,37 @@ describe('Reservation Concurrency (50 requests to 1 slot)', () => {
 
     prisma = app.get(PrismaService);
 
-    const runId = Date.now().toString(36);
-    const tenant = await prisma.tenant.create({
-      data: { name: `Concurrency Test ${runId}`, slug: `concurrency-test-${runId}` },
-    });
-    tenantId = tenant.id;
-    const outlet = await prisma.outlet.create({
-      data: {
-        tenantId,
-        name: 'Concurrency Test Outlet',
-        slug: `concurrency-outlet-${runId}`,
-        minNoticeMinutes: 0,
+
       },
     });
     outletId = outlet.id;
 
-    await prisma.openingHour.createMany({
-      data: Array.from({ length: 7 }, (_, weekday) => ({
-        tenantId,
-        outletId,
-        weekday,
-        openTime: '09:00',
-        closeTime: '22:00',
-      })),
-    });
+
     await prisma.restaurantTable.create({
       data: {
         tenantId,
         outletId,
-        tableNumber: 'CONCURRENCY-1',
-        capacity: 4,
+
       },
     });
+
+    // Opening hours 00:00 - 23:59 for all days
+    for (let weekday = 0; weekday <= 6; weekday++) {
+      await prisma.openingHour.create({
+        data: {
+          tenantId,
+          outletId,
+          weekday,
+          openTime: '00:00',
+          closeTime: '23:59',
+          isClosed: false,
+        },
+      });
+    }
   }, 30000);
 
   afterAll(async () => {
-    if (tenantId) {
-      await prisma.tenant.delete({ where: { id: tenantId } });
+
     }
     if (app) {
       await app.close();

@@ -32,6 +32,12 @@ postgres-data/
 *.sqlite
 *.db
 
+# Local proposal and reference artifacts
+Documentation/Draf Proposal Magang.md
+Documentation/Sosialisasi Magang Wajib Angkatan 2023.pdf
+Documentation/Template Proposal Magang SI V.1.2.docx
+Documentation/SYSTEM_DIAGRAMS_AND_USE_CASES.md
+
 # IDE & OS
 .idea/
 .vscode/
@@ -39,3 +45,9 @@ postgres-data/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Ignored Documentation files
+Documentation/Draf Proposal Magang.md
+Documentation/Sosialisasi Magang Wajib Angkatan 2023.pdf
+Documentation/Template Proposal Magang SI V.1.2.docx
+Documentation/SYSTEM_DIAGRAMS_AND_USE_CASES.md

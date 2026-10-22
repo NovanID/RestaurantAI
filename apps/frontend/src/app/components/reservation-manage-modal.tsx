@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+
 
 type ReservationDetail = {
   id: string;
@@ -46,10 +46,7 @@ export default function ReservationManageModal({
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -148,20 +145,18 @@ export default function ReservationManageModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="manage-reservation-modal-title">
-      <div className="relative w-full max-w-lg rounded-xl border border-[#3d332a] bg-[#16201D] text-[#ECE8AF] shadow-2xl p-6 overflow-hidden">
+
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-[#2d2924]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#4A943E]" />
-            <h2 id="manage-reservation-modal-title" className="text-lg font-bold uppercase tracking-wider text-[#ECE8AF]">
+
               Cek & Kelola Reservasi
             </h2>
           </div>
           <button
             onClick={onClose}
-            aria-label="Tutup dialog kelola reservasi"
-            className="w-8 h-8 rounded-full border border-[#3d332a] flex items-center justify-center text-[#ECE8AF]/60 hover:text-[#ECE8AF] hover:border-[#D98327] transition"
+
           >
             ✕
           </button>

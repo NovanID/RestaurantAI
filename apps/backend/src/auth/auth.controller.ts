@@ -1,7 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService } from './auth.service';
+import { createRateLimitInterceptor } from '../common/rate-limit.service';
+
+const LoginRateLimit = createRateLimitInterceptor({
+  windowMs: 60_000,
+  maxRequests: 5,
+  keyPrefix: 'auth-login',
+  message: 'Terlalu banyak percobaan login gagal. Silakan tunggu 1 menit.',
+});
 
 export class LoginDto {
   @IsString()
@@ -23,6 +31,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @UseInterceptors(LoginRateLimit)
   @HttpCode(HttpStatus.OK)
   async login(@Body() body: LoginDto) {
     return this.authService.login(body.tenantSlug, body.email, body.password);

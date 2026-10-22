@@ -16,12 +16,7 @@ export class AuthService {
     });
 
     if (!tenant) {
-      throw new UnauthorizedException({
-        error: {
-          code: 'TENANT_NOT_FOUND',
-          message: 'Restoran tidak ditemukan.',
-        },
-      });
+      throw this.invalidCredentials();
     }
 
     const staff = await this.prisma.staffUser.findUnique({
@@ -34,22 +29,12 @@ export class AuthService {
     });
 
     if (!staff || !staff.isActive) {
-      throw new UnauthorizedException({
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Email atau password salah.',
-        },
-      });
+      throw this.invalidCredentials();
     }
 
     const isMatch = await bcrypt.compare(password, staff.passwordHash);
     if (!isMatch) {
-      throw new UnauthorizedException({
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Email atau password salah.',
-        },
-      });
+      throw this.invalidCredentials();
     }
 
     await this.prisma.staffUser.update({
@@ -79,5 +64,14 @@ export class AuthService {
         },
       },
     };
+  }
+
+  private invalidCredentials() {
+    return new UnauthorizedException({
+      error: {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Email, password, atau restoran salah.',
+      },
+    });
   }
 }
